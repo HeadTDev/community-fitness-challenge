@@ -7,7 +7,7 @@ NC='\033[0m' # No Color
 
 FAILED=0
 
-echo "🔍 Starting Full Project Verification (Day 1-6)..."
+echo "🔍 Starting Full Project Verification (Day 1-7)..."
 echo "------------------------------------------------------------"
 
 # 1. Check Docker Containers Status
@@ -52,7 +52,18 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# 4. Check Redis
+# 4. Check AWS S3 Client (Day 7)
+echo -n "☁️  Checking AWS S3 Client Integration Test: "
+S3_TEST=$(docker compose exec -T api go test ./internal/aws/ -v || true)
+if [[ $S3_TEST == *"PASS"* ]] && [[ $S3_TEST != *"FAIL"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (AWS S3 Client tests failed)${NC}"
+    echo "$S3_TEST"
+    FAILED=$((FAILED + 1))
+fi
+
+# 5. Check Redis
 echo -n "🔴 Checking Redis (PING): "
 REDIS_CHECK=$(docker compose exec -T redis redis-cli ping | tr -d '\r')
 if [[ $REDIS_CHECK == "PONG" ]]; then
@@ -114,7 +125,7 @@ fi
 
 echo "------------------------------------------------------------"
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ All tests passed. Day 6 is solid.${NC}"
+    echo -e "${GREEN}✅ All tests passed. Day 7 is solid.${NC}"
     exit 0
 else
     echo -e "${RED}❌ $FAILED test(s) failed. Please check the logs above.${NC}"
