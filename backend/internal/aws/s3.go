@@ -4,23 +4,22 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type S3Client struct {
-	client   *s3.Client
-	endpoint string
+	client    *s3.Client
+	publicURL string // A publikus elérhetőség alapja (pl. CDN vagy http://localhost:4566)
 }
 
-func NewS3Client(cfg aws.Config, endpoint string) *S3Client {
+func NewS3Client(cfg aws.Config, publicURL string) *S3Client {
 	return &S3Client{
-		client:   s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.UsePathStyle = true // LocalStack-hez elengedhetetlen a PathStyle
+		client: s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.UsePathStyle = true // LocalStack-hez és egyes S3-kompatibilis szolgáltatókhoz
 		}),
-		endpoint: endpoint,
+		publicURL: publicURL,
 	}
 }
 
@@ -33,21 +32,20 @@ func (s *S3Client) UploadFile(ctx context.Context, bucket, key string, body io.R
 		ContentType: aws.String(contentType),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to upload file to S3: %w", err)
+		return "", fmt.Errorf("failed to upload file to S3 bucket %s: %w", bucket, err)
 	}
 
 	return s.GetFileURL(bucket, key), nil
 }
 
-// GetFileURL visszaadja a fájl elérési útját.
+// GetFileURL visszaadja a fájl publikus elérési útját a konfigurált PublicURL alapján.
 func (s *S3Client) GetFileURL(bucket, key string) string {
-	if s.endpoint != "" {
-		// LocalStack esetén: http://localhost:4566/bucket/key
-		endpoint := strings.Replace(s.endpoint, "localstack", "localhost", 1)
-		return fmt.Sprintf("%s/%s/%s", endpoint, bucket, key)
+	// Senior tip: Tisztítsuk meg a publicURL-t a záró perjelektől a konzisztens összefűzéshez.
+	base := s.publicURL
+	for len(base) > 0 && base[len(base)-1] == '/' {
+		base = base[:len(base)-1]
 	}
-	// Valódi AWS esetén: https://bucket.s3.region.amazonaws.com/key
-	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", bucket, key)
+	return fmt.Sprintf("%s/%s/%s", base, bucket, key)
 }
 
 // ListFiles listázza a fájlokat egy prefix alapján.
@@ -57,12 +55,14 @@ func (s *S3Client) ListFiles(ctx context.Context, bucket, prefix string) ([]stri
 		Prefix: aws.String(prefix),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list files from S3: %w", err)
+		return nil, fmt.Errorf("failed to list files from S3 bucket %s with prefix %s: %w", bucket, prefix, err)
 	}
 
 	var files []string
 	for _, obj := range output.Contents {
-		files = append(files, *obj.Key)
+		if obj.Key != nil {
+			files = append(files, *obj.Key)
+		}
 	}
 	return files, nil
 }
@@ -74,7 +74,7 @@ func (s *S3Client) DeleteFile(ctx context.Context, bucket, key string) error {
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete file from S3: %w", err)
+		return fmt.Errorf("failed to delete file %s from S3 bucket %s: %w", key, bucket, err)
 	}
 	return nil
 }

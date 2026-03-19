@@ -23,10 +23,21 @@ func TestS3Client(t *testing.T) {
 	awsCfg, err := fca.NewAWSConfig(ctx, cfg)
 	require.NoError(t, err)
 
-	s3Client := fca.NewS3Client(awsCfg, cfg.AWSEndpoint)
+	s3Client := fca.NewS3Client(awsCfg, cfg.S3PublicURL)
 	bucket := "fitchallenge-assets"
 	testKey := "tests/test-file.txt"
 	testContent := "hello world"
+
+	t.Run("GetFileURL with and without trailing slash", func(t *testing.T) {
+		client1 := fca.NewS3Client(awsCfg, "http://localhost:4566")
+		client2 := fca.NewS3Client(awsCfg, "http://localhost:4566/")
+		
+		url1 := client1.GetFileURL("mybucket", "mykey")
+		url2 := client2.GetFileURL("mybucket", "mykey")
+		
+		assert.Equal(t, "http://localhost:4566/mybucket/mykey", url1)
+		assert.Equal(t, "http://localhost:4566/mybucket/mykey", url2)
+	})
 
 	t.Run("Upload File", func(t *testing.T) {
 		body := strings.NewReader(testContent)

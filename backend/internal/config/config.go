@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -14,15 +15,17 @@ type Config struct {
 	DBName      string
 	DBHost      string
 	DBPort      string
+	DBMaxConns  int32
+	DBMinConns  int32
 	RedisHost   string
 	RedisPort   string
 	JWTSecret   string
 	AWSRegion   string
 	AWSEndpoint string
+	S3PublicURL string // Az URL, amin a kliens eléri az S3 fájlokat (pl. CDN vagy LocalStack)
 }
 
 func LoadConfig() *Config {
-	// Try to load .env, but don't fail if it doesn't exist (e.g. in Docker)
 	_ = godotenv.Load()
 
 	cfg := &Config{
@@ -30,13 +33,16 @@ func LoadConfig() *Config {
 		DBUser:      getEnv("DB_USER", "fc_user"),
 		DBPassword:  getEnv("DB_PASSWORD", "fc_password"),
 		DBName:      getEnv("DB_NAME", "fitchallenge"),
-		DBHost:      getEnv("DB_HOST", "postgres"), // Default for docker
+		DBHost:      getEnv("DB_HOST", "postgres"),
 		DBPort:      getEnv("DB_PORT", "5432"),
-		RedisHost:   getEnv("REDIS_HOST", "redis"), // Default for docker
+		DBMaxConns:  getEnvInt("DB_MAX_CONNS", 10),
+		DBMinConns:  getEnvInt("DB_MIN_CONNS", 2),
+		RedisHost:   getEnv("REDIS_HOST", "redis"),
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
 		JWTSecret:   getEnv("JWT_SECRET", "super_secret"),
 		AWSRegion:   getEnv("AWS_DEFAULT_REGION", "us-east-1"),
 		AWSEndpoint: getEnv("AWS_ENDPOINT_URL", ""),
+		S3PublicURL: getEnv("S3_PUBLIC_URL", "http://localhost:4566"),
 	}
 
 	log.Println("✅ Configuration loaded successfully")
@@ -46,6 +52,15 @@ func LoadConfig() *Config {
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int32) int32 {
+	if value, ok := os.LookupEnv(key); ok {
+		if i, err := strconv.ParseInt(value, 10, 32); err == nil {
+			return int32(i)
+		}
 	}
 	return fallback
 }

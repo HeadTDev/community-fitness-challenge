@@ -113,19 +113,30 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-echo -n "🚀 Checking Go Backend (/readyz): "
+echo -n "🚀 Checking Go Backend (/readyz with DB status): "
 API_READY=$(docker compose exec -T localstack curl -s http://api:8080/readyz || true)
-if [[ $API_READY == *"\"success\":true"* ]] && [[ $API_READY == *"\"status\":\"ready\""* ]]; then
+if [[ $API_READY == *"\"success\":true"* ]] && [[ $API_READY == *"\"status\":\"ready\""* ]] && [[ $API_READY == *"\"db\":\"ok\""* ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (API /readyz not responding correctly)${NC}"
+    echo -e "${RED}FAIL (API /readyz not responding correctly or DB is not ok)${NC}"
     echo "Response: $API_READY"
+    FAILED=$((FAILED + 1))
+fi
+
+# 6. Full Integration Test (Day 7 Optimization)
+echo -n "🔄 Checking Full Integration Test (DB + S3): "
+INT_TEST=$(docker compose exec -T api go test ./internal/integration/ -v || true)
+if [[ $INT_TEST == *"PASS"* ]] && [[ $INT_TEST != *"FAIL"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Full Integration tests failed)${NC}"
+    echo "$INT_TEST"
     FAILED=$((FAILED + 1))
 fi
 
 echo "------------------------------------------------------------"
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ All tests passed. Day 7 is solid.${NC}"
+    echo -e "${GREEN}✅ All tests passed. Day 7 Optimization is solid.${NC}"
     exit 0
 else
     echo -e "${RED}❌ $FAILED test(s) failed. Please check the logs above.${NC}"

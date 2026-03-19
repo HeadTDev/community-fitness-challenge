@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	projectConfig "github.com/HeadTDev/fitchallenge/internal/config"
@@ -39,7 +40,7 @@ func NewAWSConfig(ctx context.Context, cfg *projectConfig.Config) (aws.Config, e
 
 	awsCfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		return aws.Config{}, err
+		return aws.Config{}, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	return awsCfg, nil

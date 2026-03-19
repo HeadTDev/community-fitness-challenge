@@ -91,6 +91,8 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+    volumes:
+      - ./backend:/app
     networks:
       - app-net
       - data-net
@@ -111,6 +113,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./backend:/app
     networks:
       - data-net
 
