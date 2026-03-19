@@ -96,6 +96,25 @@ services:
       - app-net
       - data-net
 
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: fc-migrate
+    profiles: ["migrate"] # Csak akkor fut, ha explicit kérjük
+    environment:
+      - DB_USER=${DB_USER:-fc_user}
+      - DB_PASSWORD=${DB_PASSWORD:-fc_password}
+      - DB_NAME=${DB_NAME:-fitchallenge}
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT:-5432}
+    command: go run cmd/migrate/main.go -dir up
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data-net
+
 networks:
   app-net:
     driver: bridge

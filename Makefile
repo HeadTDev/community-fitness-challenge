@@ -20,9 +20,16 @@ aws-status:
 verify:
 	./tests/verify_infra.sh
 
-# DB migrations (placeholder for Day 5)
-migrate:
-	@echo "Migration system coming on Day 5..."
+# DB migrations
+db-migrate:
+	docker compose run --rm migrate
+
+db-migrate-down:
+	docker compose run --rm migrate go run cmd/migrate/main.go -dir down
+
+# Shell into the database
+db-shell:
+	docker compose exec postgres psql -U fc_user -d fitchallenge
 
 # Rebuild and restart only the API
 restart-api:

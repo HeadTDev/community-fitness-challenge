@@ -5,7 +5,9 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo "🔍 Starting Full Project Verification (Day 1-4)..."
+FAILED=0
+
+echo "🔍 Starting Full Project Verification (Day 1-5)..."
 echo "------------------------------------------------------------"
 
 # 1. Check Docker Containers Status
@@ -16,15 +18,27 @@ if [[ $CONTAINERS == *"healthy"* ]] && [[ $CONTAINERS == *"fc-api"* ]]; then
 else
     echo -e "${RED}FAIL (Some containers are not healthy or missing)${NC}"
     docker compose ps
+    FAILED=$((FAILED + 1))
 fi
 
-# 2. Check PostgreSQL
-echo -n "🐘 Checking PostgreSQL (users table): "
-PG_CHECK=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\dt" | grep users || true)
-if [[ $PG_CHECK == *"users"* ]]; then
+# 2. Check Database Migrations (Day 5)
+echo -n "🐘 Checking Database Migrations (schema_migrations): "
+MIG_TABLE=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\dt" | grep schema_migrations || true)
+if [[ $MIG_TABLE == *"schema_migrations"* ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
-    echo -e "${RED}FAIL (Table 'users' not found)${NC}"
+    echo -e "${RED}FAIL (Table 'schema_migrations' not found - Migrations not run?)${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "🐘 Checking PostgreSQL (users table with Day 5 fields): "
+# Check if users table has the 'role' column which was added in Day 5 migration
+USER_ROLE_CHECK=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\d users" | grep role || true)
+if [[ $USER_ROLE_CHECK == *"role"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (Table 'users' missing 'role' column from migration)${NC}"
+    FAILED=$((FAILED + 1))
 fi
 
 # 3. Check Redis
@@ -34,6 +48,7 @@ if [[ $REDIS_CHECK == "PONG" ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL (Redis did not respond with PONG, got: '$REDIS_CHECK')${NC}"
+    FAILED=$((FAILED + 1))
 fi
 
 # 4. Check LocalStack Resources (S3, SQS, Secrets)
@@ -43,6 +58,7 @@ if [[ $S3_CHECK == *"fitchallenge-assets"* ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL (S3 Bucket not found)${NC}"
+    FAILED=$((FAILED + 1))
 fi
 
 echo -n "📨 Checking LocalStack SQS (fitchallenge-jobs): "
@@ -51,6 +67,7 @@ if [[ $SQS_CHECK == *"fitchallenge-jobs"* ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL (SQS Queue not found)${NC}"
+    FAILED=$((FAILED + 1))
 fi
 
 echo -n "🔐 Checking LocalStack Secrets (jwt-secret): "
@@ -59,6 +76,7 @@ if [[ $SECRET_CHECK == *"fitchallenge/jwt-secret"* ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
     echo -e "${RED}FAIL (Secret 'fitchallenge/jwt-secret' not found)${NC}"
+    FAILED=$((FAILED + 1))
 fi
 
 # 5. Check Go Backend API (Day 4)
@@ -70,6 +88,7 @@ if [[ $API_HEALTH == *"\"success\":true"* ]] && [[ $API_HEALTH == *"\"status\":\
 else
     echo -e "${RED}FAIL (API /healthz not responding correctly)${NC}"
     echo "Response: $API_HEALTH"
+    FAILED=$((FAILED + 1))
 fi
 
 echo -n "🚀 Checking Go Backend (/readyz): "
@@ -79,7 +98,15 @@ if [[ $API_READY == *"\"success\":true"* ]] && [[ $API_READY == *"\"status\":\"r
 else
     echo -e "${RED}FAIL (API /readyz not responding correctly)${NC}"
     echo "Response: $API_READY"
+    FAILED=$((FAILED + 1))
 fi
 
 echo "------------------------------------------------------------"
-echo "✅ All tests passed. Day 4 is solid."
+if [ $FAILED -eq 0 ]; then
+    echo -e "${GREEN}✅ All tests passed. Day 5 is solid.${NC}"
+    exit 0
+else
+    echo -e "${RED}❌ $FAILED test(s) failed. Please check the logs above.${NC}"
+    exit 1
+fi
+
