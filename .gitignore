@@ -46,4 +46,3 @@ DerivedData/
 # Local Data & Tooling
 .localstack/
 .gemini/
-.docs/
