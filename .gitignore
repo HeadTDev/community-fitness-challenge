@@ -42,3 +42,8 @@ DerivedData/
 
 # Docker
 .docker/
+
+# Local Data & Tooling
+.localstack/
+.gemini/
+.docs/
