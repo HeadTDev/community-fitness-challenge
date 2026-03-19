@@ -7,7 +7,7 @@ NC='\033[0m' # No Color
 
 FAILED=0
 
-echo "🔍 Starting Full Project Verification (Day 1-5)..."
+echo "🔍 Starting Full Project Verification (Day 1-6)..."
 echo "------------------------------------------------------------"
 
 # 1. Check Docker Containers Status
@@ -41,7 +41,18 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# 3. Check Redis
+# 3. Check User Repository (Day 6)
+echo -n "👤 Checking User Repository Integration Test: "
+REPO_TEST=$(docker compose exec -T api go test ./internal/adapter/postgres/ -v || true)
+if [[ $REPO_TEST == *"PASS"* ]] && [[ $REPO_TEST != *"FAIL"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL (User Repository tests failed)${NC}"
+    echo "$REPO_TEST"
+    FAILED=$((FAILED + 1))
+fi
+
+# 4. Check Redis
 echo -n "🔴 Checking Redis (PING): "
 REDIS_CHECK=$(docker compose exec -T redis redis-cli ping | tr -d '\r')
 if [[ $REDIS_CHECK == "PONG" ]]; then
@@ -103,7 +114,7 @@ fi
 
 echo "------------------------------------------------------------"
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ All tests passed. Day 5 is solid.${NC}"
+    echo -e "${GREEN}✅ All tests passed. Day 6 is solid.${NC}"
     exit 0
 else
     echo -e "${RED}❌ $FAILED test(s) failed. Please check the logs above.${NC}"
