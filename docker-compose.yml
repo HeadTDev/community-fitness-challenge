@@ -51,7 +51,6 @@ services:
       - PERSISTENCE=${PERSISTENCE:-1}
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - REGION=${AWS_DEFAULT_REGION:-us-east-1}
     volumes:
       - "./infra/localstack:/docker-entrypoint-initaws.d"
       - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
