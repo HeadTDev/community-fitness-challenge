@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: fc-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-fc_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fc_password}
+      POSTGRES_DB: ${DB_NAME:-fitchallenge}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./infra/docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fc_user} -d ${DB_NAME:-fitchallenge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    container_name: fc-redis
+    restart: always
+    volumes:
+      - redis-data:/data
+      - ./infra/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack-pro:latest
+    container_name: fc-localstack
+    ports:
+      - "127.0.0.1:4566:4566"            # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559"  # external services port range
+    environment:
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      - PERSISTENCE=${PERSISTENCE:-1}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    volumes:
+      - "./infra/localstack:/etc/localstack/init/ready.d"
+      - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - app-net
+      - data-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app-net:
+    driver: bridge
+  data-net:
+    driver: bridge
+    internal: true # Senior tipp: Az adatbázisok ne legyenek közvetlenül elérhetőek kívülről, csak proxy-n vagy bastion-on keresztül.
+
+volumes:
+  postgres-data:
+  redis-data:
