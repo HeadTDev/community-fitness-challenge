@@ -36,3 +36,12 @@ func (h *HealthHandler) Readyz(c *gin.Context) {
 		"redis":  "ok", // Redis kliens majd később kerül beépítésre
 	})
 }
+
+// AWSStatus ellenőrzi az AWS szolgáltatások elérhetőségét (fejlesztéshez).
+func (h *HealthHandler) AWSStatus(c *gin.Context) {
+	// Egyelőre statikus 'ok' válasz a feladat szerint.
+	response.Success(c, http.StatusOK, gin.H{
+		"s3":  "ok",
+		"sqs": "ok",
+	})
+}

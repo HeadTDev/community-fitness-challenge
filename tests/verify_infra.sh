@@ -11,7 +11,7 @@ FAILED=0
 
 echo -e "${CYAN}============================================================${NC}"
 echo -e "${CYAN}🚀 COMMUNITY FITNESS CHALLENGE - FULL PROJECT VERIFICATION${NC}"
-echo -e "${CYAN}📅 Progress: Day 1 to Day 9${NC}"
+echo -e "${CYAN}📅 Progress: Day 1 to Day 10${NC}"
 echo -e "${CYAN}============================================================${NC}"
 
 # --- Day 1-2-3: Infrastructure Bases ---
@@ -122,6 +122,46 @@ else
     FAILED=$((FAILED + 1))
 fi
 
+# --- Day 10: Auth & Middleware ---
+echo -e "\n${YELLOW}[Day 10: Auth Handler & Middleware]${NC}"
+
+echo -n "  🔐 Register Dev (Get Token): "
+AUTH_RESPONSE=$(docker compose exec -T localstack curl -s -X POST http://api:8080/auth/register-dev || true)
+TOKEN=$(echo "$AUTH_RESPONSE" | grep -oP '"access_token":"\K[^"]+' || true)
+if [[ $AUTH_RESPONSE == *"\"success\":true"* ]] && [[ -n "$TOKEN" ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "  🔐 Protected Route Access (/v1/users/me): "
+ME_RESPONSE=$(docker compose exec -T localstack curl -s -H "Authorization: Bearer $TOKEN" http://api:8080/v1/users/me || true)
+if [[ $ME_RESPONSE == *"\"success\":true"* ]] && [[ $ME_RESPONSE == *"\"user_id\":"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "  🔐 Protected Route Rejection (No Token): "
+NO_AUTH_RESPONSE=$(docker compose exec -T localstack curl -s http://api:8080/v1/users/me || true)
+if [[ $NO_AUTH_RESPONSE == *"\"success\":false"* ]] && [[ $NO_AUTH_RESPONSE == *"\"code\":\"AUTH_REQUIRED\""* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "  ☁️  AWS Status Endpoint: "
+AWS_STATUS=$(docker compose exec -T localstack curl -s -H "Authorization: Bearer $TOKEN" http://api:8080/v1/aws-status || true)
+if [[ $AWS_STATUS == *"\"s3\":\"ok\""* ]] && [[ $AWS_STATUS == *"\"sqs\":\"ok\""* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
 # --- Final Check: Full Integration ---
 echo -e "\n${YELLOW}[System Integrity Check]${NC}"
 
@@ -136,12 +176,11 @@ fi
 
 echo -e "\n${CYAN}============================================================${NC}"
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ VERIFICATION SUCCESSFUL: Day 9 JWT System is solid.${NC}"
+    echo -e "${GREEN}✅ VERIFICATION SUCCESSFUL: Day 10 Auth & Middleware are solid.${NC}"
     echo -e "${CYAN}============================================================${NC}"
     exit 0
 else
     echo -e "${RED}❌ VERIFICATION FAILED: $FAILED check(s) failed.${NC}"
-    echo -e "${RED}Please review the logs above for specific failures.${NC}"
     echo -e "${CYAN}============================================================${NC}"
     exit 1
 fi

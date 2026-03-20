@@ -7,6 +7,7 @@ import (
 
 	fca "github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,7 +63,7 @@ func TestAWSServices(t *testing.T) {
 
 	t.Run("Secrets Manager Operations", func(t *testing.T) {
 		secretsClient := fca.NewSecretsClient(awsCfg)
-		secretName := "test/secret"
+		secretName := "test/secret-" + uuid.New().String()
 		secretValue := "super-secret-value"
 
 		// Create

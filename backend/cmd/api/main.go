@@ -12,6 +12,8 @@ import (
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
+	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
+	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,18 +34,37 @@ func main() {
 		dbPool.Close()
 	}()
 
-	// 3. Initialize Gin router
+	// 3. Initialize JWT & AWS Clients
+	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
+	
+	// 4. Initialize Gin router
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(dbPool)
+	authHandler := handler.NewAuthHandler(jwtManager)
 
-	// Basic routes
+	// Basic health routes
 	r.GET("/healthz", healthHandler.Healthz)
 	r.GET("/readyz", healthHandler.Readyz)
 
-	// 4. Configure HTTP Server
+	// Auth routes
+	auth := r.Group("/auth")
+	{
+		auth.POST("/register-dev", authHandler.RegisterDev)
+		auth.POST("/refresh", authHandler.RefreshToken)
+	}
+
+	// Protected v1 routes
+	v1 := r.Group("/v1")
+	v1.Use(middleware.AuthMiddleware(jwtManager))
+	{
+		v1.GET("/users/me", handler.MeHandler)
+		v1.GET("/aws-status", healthHandler.AWSStatus)
+	}
+
+	// 5. Configure HTTP Server
 	srv := &http.Server{
 		Addr:    ":" + cfg.AppPort,
 		Handler: r,
