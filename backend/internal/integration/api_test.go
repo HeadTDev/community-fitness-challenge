@@ -14,6 +14,7 @@ import (
 	fca "github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
+	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,7 @@ func TestFullIntegration(t *testing.T) {
 	// 3. Test API Handlers
 	h := handler.NewHealthHandler(pool)
 	r := gin.New()
+	r.Use(middleware.RequestIDMiddleware())
 	r.GET("/readyz", h.Readyz)
 
 	t.Run("API Readyz Check", func(t *testing.T) {
@@ -57,6 +59,11 @@ func TestFullIntegration(t *testing.T) {
 		assert.NoError(t, err)
 		
 		assert.Equal(t, true, resp["success"])
+
+		// Meta check
+		meta := resp["meta"].(map[string]interface{})
+		assert.NotEmpty(t, meta["request_id"])
+
 		data := resp["data"].(map[string]interface{})
 		assert.Equal(t, "ready", data["status"])
 		assert.Equal(t, "ok", data["db"])

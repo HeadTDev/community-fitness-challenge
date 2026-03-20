@@ -35,8 +35,8 @@ func AuthMiddleware(jwtManager *jwt.JWTManager) gin.HandlerFunc {
 		}
 
 		// Elmentjük a claim-eket a kontextusba a későbbi használathoz
-		c.Set("user_id", claims.UserID)
-		c.Set("role", claims.Role)
+		c.Set(UserIDKey, claims.UserID)
+		c.Set(RoleKey, claims.Role)
 
 		c.Next()
 	}

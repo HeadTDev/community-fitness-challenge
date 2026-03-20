@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	AppEnv      string
 	AppPort     string
 	DBUser      string
 	DBPassword  string
@@ -29,6 +30,7 @@ func LoadConfig() *Config {
 	_ = godotenv.Load()
 
 	cfg := &Config{
+		AppEnv:      getEnv("APP_ENV", "development"),
 		AppPort:     getEnv("API_PORT", "8080"),
 		DBUser:      getEnv("DB_USER", "fc_user"),
 		DBPassword:  getEnv("DB_PASSWORD", "fc_password"),

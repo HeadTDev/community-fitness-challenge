@@ -11,16 +11,24 @@ import (
 
 type AuthHandler struct {
 	jwtManager *jwt.JWTManager
+	appEnv     string
 }
 
-func NewAuthHandler(jwtManager *jwt.JWTManager) *AuthHandler {
+func NewAuthHandler(jwtManager *jwt.JWTManager, appEnv string) *AuthHandler {
 	return &AuthHandler{
 		jwtManager: jwtManager,
+		appEnv:     appEnv,
 	}
 }
 
 // RegisterDev egy ideiglenes végpont a fejlesztéshez, ami azonnal ad egy tokent.
 func (h *AuthHandler) RegisterDev(c *gin.Context) {
+	// Biztonsági check: Produkcióban tilos!
+	if h.appEnv == "production" {
+		response.Error(c, http.StatusForbidden, "FORBIDDEN", "Development endpoint is disabled in production")
+		return
+	}
+
 	// Teszt user generálása
 	userID := uuid.New().String()
 	role := "user"

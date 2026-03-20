@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"log/slog"
 
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
 	"github.com/HeadTDev/fitchallenge/internal/config"
@@ -21,29 +22,42 @@ func main() {
 	// 1. Load configuration
 	cfg := config.LoadConfig()
 
-	// 2. Initialize Database Connection
+	// 2. Initialize Structured Logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	// 3. Initialize Database Connection
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	dbPool, err := postgres.NewConnection(ctx, cfg)
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to database: %v", err)
+		slog.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
-		log.Println("🐘 Closing database connection pool...")
+		slog.Info("Closing database connection pool...")
 		dbPool.Close()
 	}()
 
-	// 3. Initialize JWT & AWS Clients
+	// 4. Initialize JWT & AWS Clients
 	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
 	
-	// 4. Initialize Gin router
+	// 5. Initialize Gin router
+	if cfg.AppEnv == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	
+	// Use custom middlewares
+	r.Use(middleware.RequestIDMiddleware())
+	r.Use(middleware.LoggerMiddleware())
+	r.Use(gin.Recovery())
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(dbPool)
-	authHandler := handler.NewAuthHandler(jwtManager)
+	authHandler := handler.NewAuthHandler(jwtManager, cfg.AppEnv)
 
 	// Basic health routes
 	r.GET("/healthz", healthHandler.Healthz)
