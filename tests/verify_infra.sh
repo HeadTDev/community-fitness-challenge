@@ -16,7 +16,7 @@ TOTAL_COUNT=0
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL PROJECT VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Progress: Day 1 to Day 13 (Input Validation & Rate Limiting)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Progress: Day 1 to Day 14 (Challenge, Prize, Participation Migrations)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -209,10 +209,34 @@ else
     report_status "Rate Limiting: Sliding Window (429)" "FAIL" "Did not trigger 429 after 65 requests"
 fi
 
+# --- Day 14: Challenge, Prize & Participation Migrations ---
+print_section "Phase 8: Challenge & Competition Schema (Day 14)"
+
+CHALLENGE_TABLE=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\d challenges" | grep title || true)
+if [[ -n "$CHALLENGE_TABLE" ]]; then
+    report_status "Challenge Table Schema (Title column)" "PASS"
+else
+    report_status "Challenge Table Schema (Title column)" "FAIL" "Challenges table or title column missing"
+fi
+
+PRIZE_TABLE=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\d prizes" | grep challenge_id || true)
+if [[ -n "$PRIZE_TABLE" ]]; then
+    report_status "Prize Table Schema (Challenge ID Ref)" "PASS"
+else
+    report_status "Prize Table Schema (Challenge ID Ref)" "FAIL" "Prizes table or challenge_id column missing"
+fi
+
+PARTICIPATION_TABLE=$(docker compose exec -T postgres psql -U fc_user -d fitchallenge -c "\d participations" | grep current_score || true)
+if [[ -n "$PARTICIPATION_TABLE" ]]; then
+    report_status "Participation Table Schema (Score column)" "PASS"
+else
+    report_status "Participation Table Schema (Score column)" "FAIL" "Participations table or score column missing"
+fi
+
 # --- Summary ---
 echo -e "\n${CYAN}${BOLD}============================================================${NC}"
 if [ $FAILED_COUNT -eq 0 ]; then
-    echo -e "${GREEN}${BOLD}✅ ALL SYSTEMS GO! DAY 13 VERIFICATION SUCCESSFUL${NC}"
+    echo -e "${GREEN}${BOLD}✅ ALL SYSTEMS GO! DAY 14 VERIFICATION SUCCESSFUL${NC}"
     echo -e "${CYAN}Total Checks: $TOTAL_COUNT | Failures: 0${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     exit 0
