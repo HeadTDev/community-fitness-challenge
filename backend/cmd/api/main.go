@@ -11,6 +11,7 @@ import (
 	"log/slog"
 
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
+	"github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
 	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
@@ -43,7 +44,17 @@ func main() {
 	// 4. Initialize JWT & AWS Clients
 	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
 	
-	// 5. Initialize Gin router
+	awsCfg, err := aws.NewAWSConfig(ctx, cfg)
+	if err != nil {
+		slog.Error("Failed to initialize AWS config", "error", err)
+		os.Exit(1)
+	}
+	s3Client := aws.NewS3Client(awsCfg, cfg.S3PublicURL)
+
+	// 5. Initialize Repositories
+	userRepo := postgres.NewUserRepo(dbPool)
+
+	// 6. Initialize Gin router
 	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -57,7 +68,8 @@ func main() {
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(dbPool)
-	authHandler := handler.NewAuthHandler(jwtManager, cfg.AppEnv)
+	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.AppEnv)
+	userHandler := handler.NewUserHandler(userRepo, s3Client)
 
 	// Basic health routes
 	r.GET("/healthz", healthHandler.Healthz)
@@ -74,7 +86,11 @@ func main() {
 	v1 := r.Group("/v1")
 	v1.Use(middleware.AuthMiddleware(jwtManager))
 	{
-		v1.GET("/users/me", handler.MeHandler)
+		v1.GET("/users/me", userHandler.MeHandler)
+		v1.GET("/users/profile", userHandler.GetProfile)
+		v1.PUT("/users/profile", userHandler.UpdateProfile)
+		v1.POST("/users/profile/avatar", userHandler.UploadAvatar)
+		
 		v1.GET("/aws-status", healthHandler.AWSStatus)
 	}
 

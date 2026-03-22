@@ -20,6 +20,7 @@ type User struct {
 	Email       string     `json:"email" db:"email"`
 	DisplayName *string    `json:"display_name,omitempty" db:"display_name"`
 	AvatarURL   *string    `json:"avatar_url,omitempty" db:"avatar_url"`
+	Bio         *string    `json:"bio,omitempty" db:"bio"`
 	Timezone    string     `json:"timezone" db:"timezone"`
 	Role        UserRole   `json:"role" db:"role"`
 	CreatedAt   time.Time  `json:"created_at" db:"created_at"`

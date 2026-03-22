@@ -1,8 +1,12 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
+	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -11,12 +15,14 @@ import (
 
 type AuthHandler struct {
 	jwtManager *jwt.JWTManager
+	repo       *postgres.UserRepo
 	appEnv     string
 }
 
-func NewAuthHandler(jwtManager *jwt.JWTManager, appEnv string) *AuthHandler {
+func NewAuthHandler(jwtManager *jwt.JWTManager, repo *postgres.UserRepo, appEnv string) *AuthHandler {
 	return &AuthHandler{
 		jwtManager: jwtManager,
+		repo:       repo,
 		appEnv:     appEnv,
 	}
 }
@@ -30,8 +36,25 @@ func (h *AuthHandler) RegisterDev(c *gin.Context) {
 	}
 
 	// Teszt user generálása
-	userID := uuid.New().String()
-	role := "user"
+	uID := uuid.New()
+	userID := uID.String()
+	role := string(models.RoleParticipant)
+
+	// Persist user to DB so profile CRUD works
+	user := &models.User{
+		ID:          uID,
+		Email:       fmt.Sprintf("dev-%s@fitchallenge.local", userID[:8]),
+		DisplayName: stringPtr("Dev User"),
+		Timezone:    "UTC",
+		Role:        models.RoleParticipant,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	if err := h.repo.Create(c.Request.Context(), user); err != nil {
+		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to create dev user")
+		return
+	}
 
 	accessToken, err := h.jwtManager.GenerateAccessToken(userID, role)
 	if err != nil {
@@ -79,4 +102,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{
 		"access_token": newAccessToken,
 	})
+}
+
+func stringPtr(s string) *string {
+	return &s
 }

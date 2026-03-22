@@ -17,6 +17,13 @@
 # Go workspace file
 go.work
 
+# Go binaries and build artifacts
+backend/tmp/
+backend/bin/
+main
+main.exe
+*.prof
+
 # Xcode
 build/
 *.xcodeproj/*

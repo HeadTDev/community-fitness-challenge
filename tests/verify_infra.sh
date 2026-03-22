@@ -144,7 +144,7 @@ echo -e "\n${YELLOW}[Day 10-11: Auth Handler, Middleware & Standard Response]${N
 
 echo -n "  🔐 Register Dev (Get Token): "
 AUTH_RESPONSE=$(docker compose exec -T localstack curl -s -X POST http://api:8080/auth/register-dev || true)
-TOKEN=$(echo "$AUTH_RESPONSE" | grep -oP '"access_token":"\K[^"]+' || true)
+TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' || true)
 if [[ $AUTH_RESPONSE == *"\"success\":true"* ]] && [[ -n "$TOKEN" ]]; then
     echo -e "${GREEN}PASS${NC}"
 else
@@ -197,6 +197,43 @@ else
     FAILED=$((FAILED + 1))
 fi
 
+# --- Day 12: User Profile & Avatar ---
+echo -e "\n${YELLOW}[Day 12: User Profile CRUD + Avatar Upload (S3!)]${NC}"
+
+echo -n "  👤 Update Profile (Display Name & Bio): "
+PROFILE_UPDATE=$(docker compose exec -T localstack curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"display_name":"Dev Hero", "bio":"Building the future of fitness"}' \
+    http://api:8080/v1/users/profile || true)
+if [[ $PROFILE_UPDATE == *"\"display_name\":\"Dev Hero\""* ]] && [[ $PROFILE_UPDATE == *"\"bio\":\"Building the future of fitness\""* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "  👤 Get Full Profile: "
+PROFILE_GET=$(docker compose exec -T localstack curl -s -H "Authorization: Bearer $TOKEN" http://api:8080/v1/users/profile || true)
+if [[ $PROFILE_GET == *"\"display_name\":\"Dev Hero\""* ]] && [[ $PROFILE_GET == *"\"email\":"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
+echo -n "  🖼️  Upload Avatar (S3 Integration): "
+# Create a dummy image file for upload
+docker compose exec -T localstack sh -c "echo 'fake-image-content' > /tmp/avatar.jpg"
+AVATAR_UPLOAD=$(docker compose exec -T localstack curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -F "avatar=@/tmp/avatar.jpg" \
+    http://api:8080/v1/users/profile/avatar || true)
+if [[ $AVATAR_UPLOAD == *"\"success\":true"* ]] && [[ $AVATAR_UPLOAD == *"avatar_url"* ]]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    FAILED=$((FAILED + 1))
+fi
+
 # --- Final Check: Full Integration ---
 echo -e "\n${YELLOW}[System Integrity Check]${NC}"
 
@@ -211,7 +248,7 @@ fi
 
 echo -e "\n${CYAN}============================================================${NC}"
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ VERIFICATION SUCCESSFUL: Day 11 Middleware & Standard Response are solid.${NC}"
+    echo -e "${GREEN}✅ VERIFICATION SUCCESSFUL: Day 12 User Profile & Avatar Upload are solid.${NC}"
     echo -e "${CYAN}============================================================${NC}"
     exit 0
 else
