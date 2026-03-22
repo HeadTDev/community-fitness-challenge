@@ -52,7 +52,7 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     volumes:
-      - "./infra/localstack:/docker-entrypoint-initaws.d"
+      - "./infra/localstack:/etc/localstack/init/ready.d"
       - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
     networks:
@@ -91,6 +91,8 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
     networks:
@@ -102,7 +104,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: fc-migrate
-    profiles: ["migrate"] # Csak akkor fut, ha explicit kérjük
     environment:
       - DB_USER=${DB_USER:-fc_user}
       - DB_PASSWORD=${DB_PASSWORD:-fc_password}
