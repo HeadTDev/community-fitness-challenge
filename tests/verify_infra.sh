@@ -16,7 +16,7 @@ TOTAL_COUNT=0
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL PROJECT VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Progress: Day 1 to Day 14 (Challenge, Prize, Participation Migrations)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Progress: Day 1 to Day 15 (Challenge Repository CRUD)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -233,10 +233,16 @@ else
     report_status "Participation Table Schema (Score column)" "FAIL" "Participations table or score column missing"
 fi
 
+# --- Day 15: Challenge Repository ---
+print_section "Phase 9: Challenge Repository (Day 15)"
+
+CHALLENGE_REPO_TEST=$(exec_api_test "./internal/adapter/postgres/")
+report_status "Challenge Repository Unit Tests" "$CHALLENGE_REPO_TEST"
+
 # --- Summary ---
 echo -e "\n${CYAN}${BOLD}============================================================${NC}"
 if [ $FAILED_COUNT -eq 0 ]; then
-    echo -e "${GREEN}${BOLD}✅ ALL SYSTEMS GO! DAY 14 VERIFICATION SUCCESSFUL${NC}"
+    echo -e "${GREEN}${BOLD}✅ ALL SYSTEMS GO! DAY 15 VERIFICATION SUCCESSFUL${NC}"
     echo -e "${CYAN}Total Checks: $TOTAL_COUNT | Failures: 0${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     exit 0
