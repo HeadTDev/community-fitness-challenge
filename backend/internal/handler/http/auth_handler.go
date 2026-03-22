@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
+	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -15,11 +15,11 @@ import (
 
 type AuthHandler struct {
 	jwtManager *jwt.JWTManager
-	repo       *postgres.UserRepo
+	repo       repositories.UserRepository
 	appEnv     string
 }
 
-func NewAuthHandler(jwtManager *jwt.JWTManager, repo *postgres.UserRepo, appEnv string) *AuthHandler {
+func NewAuthHandler(jwtManager *jwt.JWTManager, repo repositories.UserRepository, appEnv string) *AuthHandler {
 	return &AuthHandler{
 		jwtManager: jwtManager,
 		repo:       repo,

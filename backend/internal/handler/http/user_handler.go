@@ -6,25 +6,21 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
 	"github.com/HeadTDev/fitchallenge/internal/aws"
+	"github.com/HeadTDev/fitchallenge/internal/domain/models"
+	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-const (
-	AvatarBucket = "fitchallenge-assets"
-	AvatarPrefix = "avatars"
-)
-
 type UserHandler struct {
-	repo     *postgres.UserRepo
+	repo     repositories.UserRepository
 	s3Client *aws.S3Client
 }
 
-func NewUserHandler(repo *postgres.UserRepo, s3Client *aws.S3Client) *UserHandler {
+func NewUserHandler(repo repositories.UserRepository, s3Client *aws.S3Client) *UserHandler {
 	return &UserHandler{
 		repo:     repo,
 		s3Client: s3Client,
@@ -60,10 +56,7 @@ func (h *UserHandler) MeHandler(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{
-		"user_id": user.ID,
-		"role":    user.Role,
-	})
+	response.Success(c, http.StatusOK, user.ToResponse())
 }
 
 // GetProfile returns the full profile of the logged-in user.
@@ -84,7 +77,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, user)
+	response.Success(c, http.StatusOK, user.ToResponse())
 }
 
 type updateProfileRequest struct {
@@ -133,7 +126,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, user)
+	response.Success(c, http.StatusOK, user.ToResponse())
 }
 
 // UploadAvatar handles avatar image upload to S3.
@@ -165,13 +158,13 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	defer f.Close()
 
 	// Upload to S3
-	key := fmt.Sprintf("%s/%s%s", AvatarPrefix, userID.String(), ext)
+	key := fmt.Sprintf("%s/%s%s", models.AvatarPrefix, userID.String(), ext)
 	contentType := "image/jpeg"
 	if ext == ".png" {
 		contentType = "image/png"
 	}
 
-	avatarURL, err := h.s3Client.UploadFile(c.Request.Context(), AvatarBucket, key, f, contentType)
+	avatarURL, err := h.s3Client.UploadFile(c.Request.Context(), models.AvatarBucket, key, f, contentType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "S3_ERROR", "Failed to upload to S3")
 		return

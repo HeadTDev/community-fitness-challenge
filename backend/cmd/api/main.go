@@ -37,14 +37,12 @@ func main() {
 		slog.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer dbPool.Close()
 
 	redisClient, err := redis.NewRedisClient(ctx, cfg)
 	if err != nil {
 		slog.Error("Failed to connect to redis", "error", err)
 		os.Exit(1)
 	}
-	defer redisClient.Close()
 
 	// 4. Initialize JWT & AWS Clients
 	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
@@ -126,6 +124,10 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("❌ Server forced to shutdown: %v", err)
 	}
+
+	// 7. Close resources after server is stopped
+	dbPool.Close()
+	redisClient.Close()
 
 	log.Println("✅ Server stopped cleanly")
 }
