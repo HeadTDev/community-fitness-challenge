@@ -11,6 +11,7 @@ import (
 	"log/slog"
 
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
+	"github.com/HeadTDev/fitchallenge/internal/adapter/redis"
 	"github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
@@ -27,7 +28,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	// 3. Initialize Database Connection
+	// 3. Initialize Connections (DB & Redis)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -36,10 +37,14 @@ func main() {
 		slog.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		slog.Info("Closing database connection pool...")
-		dbPool.Close()
-	}()
+	defer dbPool.Close()
+
+	redisClient, err := redis.NewRedisClient(ctx, cfg)
+	if err != nil {
+		slog.Error("Failed to connect to redis", "error", err)
+		os.Exit(1)
+	}
+	defer redisClient.Close()
 
 	// 4. Initialize JWT & AWS Clients
 	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
@@ -64,6 +69,7 @@ func main() {
 	// Use custom middlewares
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.LoggerMiddleware())
+	r.Use(middleware.GlobalRateLimit(redisClient))
 	r.Use(gin.Recovery())
 
 	// Initialize handlers
