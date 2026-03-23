@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// 4. Initialize JWT & AWS Clients
-	jwtManager := jwt.NewJWTManager(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager := jwt.NewJWTManager(cfg.JWT.Secret, 15*time.Minute, 7*24*time.Hour)
 	
 	awsCfg, err := aws.NewAWSConfig(ctx, cfg)
 	if err != nil {
@@ -58,7 +58,7 @@ func main() {
 	userRepo := postgres.NewUserRepo(dbPool)
 
 	// 6. Initialize Gin router
-	if cfg.AppEnv == "production" {
+	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	
@@ -72,7 +72,7 @@ func main() {
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(dbPool)
-	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.AppEnv)
+	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
 	userHandler := handler.NewUserHandler(userRepo, s3Client)
 
 	// Basic health routes
@@ -100,13 +100,13 @@ func main() {
 
 	// 5. Configure HTTP Server
 	srv := &http.Server{
-		Addr:    ":" + cfg.AppPort,
+		Addr:    ":" + cfg.App.Port,
 		Handler: r,
 	}
 
 	// 5. Start server in a goroutine
 	go func() {
-		log.Printf("🚀 API Server starting on port %s", cfg.AppPort)
+		log.Printf("🚀 API Server starting on port %s", cfg.App.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Failed to start server: %v", err)
 		}

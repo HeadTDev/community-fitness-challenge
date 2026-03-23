@@ -13,7 +13,7 @@ import (
 // NewRedisClient initializes a new Redis client based on the provided configuration.
 func NewRedisClient(ctx context.Context, cfg *config.Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Addr:         fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
 		Password:     "", // Default is no password in dev environment
 		DB:           0,  // use default DB
 		PoolSize:     10,
@@ -28,7 +28,7 @@ func NewRedisClient(ctx context.Context, cfg *config.Config) (*redis.Client, err
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	slog.Info("🔴 Connected to Redis", "host", cfg.RedisHost, "port", cfg.RedisPort)
+	slog.Info("🔴 Connected to Redis", "host", cfg.Redis.Host, "port", cfg.Redis.Port)
 
 	return client, nil
 }

@@ -20,7 +20,7 @@ func main() {
 
 	cfg := config.LoadConfig()
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+		cfg.DB.User, cfg.DB.Password, cfg.DB.Host, cfg.DB.Port, cfg.DB.Name)
 
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, dsn)

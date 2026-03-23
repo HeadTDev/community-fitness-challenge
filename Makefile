@@ -23,10 +23,9 @@ aws-status:
 	@echo "\n--- Secrets ---"
 	@docker compose exec -T localstack awslocal secretsmanager list-secrets
 
-# Run the full infrastructure and API verification script
+# Run the full infrastructure and API verification script inside a Docker container
 verify:
-	chmod +x tests/verify_infra.sh
-	./tests/verify_infra.sh
+	docker compose run --rm verifier
 
 # Run all UP database migrations
 db-migrate:

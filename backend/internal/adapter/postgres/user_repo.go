@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -59,7 +60,7 @@ func (r *UserRepo) scanUser(row pgx.Row) (*models.User, error) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("error scanning user: %w", err)
 	}

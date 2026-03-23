@@ -12,7 +12,7 @@ import (
 
 func NewConnection(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+		cfg.DB.User, cfg.DB.Password, cfg.DB.Host, cfg.DB.Port, cfg.DB.Name)
 
 	poolCfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -20,8 +20,8 @@ func NewConnection(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, erro
 	}
 
 	// Senior tip: Konfiguráljunk pool méretet és élettartamot a stabilitás érdekében a konfiguráció alapján.
-	poolCfg.MaxConns = cfg.DBMaxConns
-	poolCfg.MinConns = cfg.DBMinConns
+	poolCfg.MaxConns = cfg.DB.MaxConns
+	poolCfg.MinConns = cfg.DB.MinConns
 	poolCfg.MaxConnLifetime = time.Hour
 	poolCfg.MaxConnIdleTime = 30 * time.Minute
 
@@ -34,6 +34,6 @@ func NewConnection(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, erro
 		return nil, fmt.Errorf("error pinging postgres: %w", err)
 	}
 
-	log.Printf("🐘 Connected to PostgreSQL (pool size: %d-%d)", cfg.DBMinConns, cfg.DBMaxConns)
+	log.Printf("🐘 Connected to PostgreSQL (pool size: %d-%d)", cfg.DB.MinConns, cfg.DB.MaxConns)
 	return pool, nil
 }

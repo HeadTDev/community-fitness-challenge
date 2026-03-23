@@ -1,12 +1,14 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/aws"
+	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
@@ -47,12 +49,11 @@ func (h *UserHandler) MeHandler(c *gin.Context) {
 
 	user, err := h.repo.GetByID(c.Request.Context(), userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to fetch user")
-		return
-	}
-
-	if user == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
 		return
 	}
 
@@ -68,12 +69,11 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 
 	user, err := h.repo.GetByID(c.Request.Context(), userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to fetch user")
-		return
-	}
-
-	if user == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
 		return
 	}
 
@@ -101,12 +101,11 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	user, err := h.repo.GetByID(c.Request.Context(), userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to fetch user")
-		return
-	}
-
-	if user == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
 		return
 	}
 
@@ -173,12 +172,11 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	// Update user record with new avatar URL
 	user, err := h.repo.GetByID(c.Request.Context(), userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to fetch user")
-		return
-	}
-
-	if user == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "User not found")
 		return
 	}
 

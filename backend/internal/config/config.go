@@ -9,43 +9,64 @@ import (
 )
 
 type Config struct {
-	AppEnv      string
-	AppPort     string
-	DBUser      string
-	DBPassword  string
-	DBName      string
-	DBHost      string
-	DBPort      string
-	DBMaxConns  int32
-	DBMinConns  int32
-	RedisHost   string
-	RedisPort   string
-	JWTSecret   string
-	AWSRegion   string
-	AWSEndpoint string
-	S3PublicURL string // Az URL, amin a kliens eléri az S3 fájlokat (pl. CDN vagy LocalStack)
+	App struct {
+		Env  string
+		Port string
+	}
+	DB struct {
+		User     string
+		Password string
+		Name     string
+		Host     string
+		Port     string
+		MaxConns int32
+		MinConns int32
+	}
+	Redis struct {
+		Host string
+		Port string
+	}
+	JWT struct {
+		Secret string
+	}
+	AWS struct {
+		Region   string
+		Endpoint string
+	}
+	S3PublicURL string
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load()
 
-	cfg := &Config{
-		AppEnv:      getEnv("APP_ENV", "development"),
-		AppPort:     getEnv("API_PORT", "8080"),
-		DBUser:      getEnv("DB_USER", "fc_user"),
-		DBPassword:  getEnv("DB_PASSWORD", "fc_password"),
-		DBName:      getEnv("DB_NAME", "fitchallenge"),
-		DBHost:      getEnv("DB_HOST", "postgres"),
-		DBPort:      getEnv("DB_PORT", "5432"),
-		DBMaxConns:  getEnvInt("DB_MAX_CONNS", 10),
-		DBMinConns:  getEnvInt("DB_MIN_CONNS", 2),
-		RedisHost:   getEnv("REDIS_HOST", "redis"),
-		RedisPort:   getEnv("REDIS_PORT", "6379"),
-		JWTSecret:   getEnv("JWT_SECRET", "super_secret"),
-		AWSRegion:   getEnv("AWS_DEFAULT_REGION", "us-east-1"),
-		AWSEndpoint: getEnv("AWS_ENDPOINT_URL", ""),
-		S3PublicURL: getEnv("S3_PUBLIC_URL", "http://localhost:4566"),
-	}
+	cfg := &Config{}
+
+	// App configuration
+	cfg.App.Env = getEnv("APP_ENV", "development")
+	cfg.App.Port = getEnv("API_PORT", "8080")
+
+	// DB configuration
+	cfg.DB.User = getEnv("DB_USER", "fc_user")
+	cfg.DB.Password = getEnv("DB_PASSWORD", "fc_password")
+	cfg.DB.Name = getEnv("DB_NAME", "fitchallenge")
+	cfg.DB.Host = getEnv("DB_HOST", "postgres")
+	cfg.DB.Port = getEnv("DB_PORT", "5432")
+	cfg.DB.MaxConns = getEnvInt("DB_MAX_CONNS", 10)
+	cfg.DB.MinConns = getEnvInt("DB_MIN_CONNS", 2)
+
+	// Redis configuration
+	cfg.Redis.Host = getEnv("REDIS_HOST", "redis")
+	cfg.Redis.Port = getEnv("REDIS_PORT", "6379")
+
+	// JWT configuration
+	cfg.JWT.Secret = getEnv("JWT_SECRET", "super_secret")
+
+	// AWS configuration
+	cfg.AWS.Region = getEnv("AWS_DEFAULT_REGION", "us-east-1")
+	cfg.AWS.Endpoint = getEnv("AWS_ENDPOINT_URL", "")
+
+	// Public configuration
+	cfg.S3PublicURL = getEnv("S3_PUBLIC_URL", "http://localhost:4566")
 
 	log.Println("✅ Configuration loaded successfully")
 	return cfg

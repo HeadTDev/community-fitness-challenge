@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -105,7 +106,7 @@ func (r *ChallengeRepo) scanChallenge(row pgx.Row) (*models.Challenge, error) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("error scanning challenge: %w", err)
 	}

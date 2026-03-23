@@ -16,11 +16,11 @@ func NewAWSConfig(ctx context.Context, cfg *projectConfig.Config) (aws.Config, e
 	var opts []func(*config.LoadOptions) error
 
 	// Alapértelmezett régió beállítása
-	opts = append(opts, config.WithRegion(cfg.AWSRegion))
+	opts = append(opts, config.WithRegion(cfg.AWS.Region))
 
 	// Ha van megadva AWSEndpoint, akkor LocalStack-et használunk (fejlesztés)
-	if cfg.AWSEndpoint != "" {
-		log.Printf("☁️ Using LocalStack endpoint: %s", cfg.AWSEndpoint)
+	if cfg.AWS.Endpoint != "" {
+		log.Printf("☁️ Using LocalStack endpoint: %s", cfg.AWS.Endpoint)
 		
 		// Senior tipp: LocalStack-hez fix teszt hitelesítő adatok kellenek.
 		opts = append(opts, config.WithCredentialsProvider(
@@ -31,8 +31,8 @@ func NewAWSConfig(ctx context.Context, cfg *projectConfig.Config) (aws.Config, e
 		opts = append(opts, config.WithEndpointResolverWithOptions(
 			aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 				return aws.Endpoint{
-					URL:           cfg.AWSEndpoint,
-					SigningRegion: cfg.AWSRegion,
+					URL:           cfg.AWS.Endpoint,
+					SigningRegion: cfg.AWS.Region,
 				}, nil
 			}),
 		))

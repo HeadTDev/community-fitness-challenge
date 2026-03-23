@@ -119,6 +119,40 @@ services:
     networks:
       - data-net
 
+  verifier:
+    image: alpine:3.19
+    container_name: fc-verifier
+    depends_on:
+      api:
+        condition: service_started
+      localstack:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - API_HOST=api
+      - API_PORT=8080
+      - DB_HOST=postgres
+      - DB_USER=fc_user
+      - DB_PASSWORD=${DB_PASSWORD:-fc_password}
+      - DB_NAME=fitchallenge
+      - PGPASSWORD=${DB_PASSWORD:-fc_password}
+      - REDIS_HOST=redis
+      - LOCALSTACK_HOST=localstack
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache curl jq postgresql-client redis bash dos2unix && dos2unix tests/verify_infra.sh && chmod +x tests/verify_infra.sh && ./tests/verify_infra.sh"]
+    networks:
+      - app-net
+      - data-net
+    profiles:
+      - test
+
 networks:
   app-net:
     driver: bridge
