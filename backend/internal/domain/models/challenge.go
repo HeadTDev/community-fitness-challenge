@@ -9,6 +9,7 @@ import (
 type ChallengeStatus string
 
 const (
+	ChallengeStatusDraft    ChallengeStatus = "draft"
 	ChallengeStatusUpcoming ChallengeStatus = "upcoming"
 	ChallengeStatusActive   ChallengeStatus = "active"
 	ChallengeStatusFinished ChallengeStatus = "finished"
@@ -25,6 +26,7 @@ const (
 
 type Challenge struct {
 	ID          uuid.UUID       `json:"id" db:"id"`
+	CreatorID   uuid.UUID       `json:"creator_id" db:"creator_id"`
 	Title       string          `json:"title" db:"title"`
 	Description *string         `json:"description,omitempty" db:"description"`
 	ImageURL    *string         `json:"image_url,omitempty" db:"image_url"`
@@ -41,6 +43,7 @@ type Challenge struct {
 // ChallengeResponse is a DTO for returning challenge data via API.
 type ChallengeResponse struct {
 	ID          uuid.UUID       `json:"id"`
+	CreatorID   uuid.UUID       `json:"creator_id"`
 	Title       string          `json:"title"`
 	Description *string         `json:"description,omitempty"`
 	ImageURL    *string         `json:"image_url,omitempty"`
@@ -54,6 +57,7 @@ type ChallengeResponse struct {
 func (c *Challenge) ToResponse() ChallengeResponse {
 	return ChallengeResponse{
 		ID:          c.ID,
+		CreatorID:   c.CreatorID,
 		Title:       c.Title,
 		Description: c.Description,
 		ImageURL:    c.ImageURL,

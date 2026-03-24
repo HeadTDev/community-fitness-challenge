@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 15 (Challenge Repository CRUD)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 16 (Challenge Service + S3 Logic)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -221,6 +221,23 @@ if [[ -n "$CHALLENGE_ID" && "$CHALLENGE_ID" != "null" ]]; then
     fi
 else
     report_status "Repository: Create Challenge" "FAIL" "Insert failed"
+fi
+
+# --- Phase 10: Challenge Service & Ownership ---
+print_section "Phase 10: Challenge Service & Ownership (Day 16)"
+
+CREATOR_COL=$(psql "$DB_CONN" -t -c "SELECT column_name FROM information_schema.columns WHERE table_name='challenges' AND column_name='creator_id';" | xargs || true)
+if [[ -n "$CREATOR_COL" ]]; then
+    report_status "Challenge Ownership (CreatorID column)" "PASS"
+else
+    report_status "Challenge Ownership (CreatorID column)" "FAIL"
+fi
+
+STATUS_DEFAULT=$(psql "$DB_CONN" -t -c "SELECT column_default FROM information_schema.columns WHERE table_name='challenges' AND column_name='status';" | xargs || true)
+if [[ "$STATUS_DEFAULT" == "'draft'::character varying" ]] || [[ "$STATUS_DEFAULT" == "'draft'" ]] || [[ "$STATUS_DEFAULT" == "draft::character varying" ]]; then
+    report_status "Challenge Lifecycle (Draft status default)" "PASS"
+else
+    report_status "Challenge Lifecycle (Draft status default)" "FAIL" "Default: $STATUS_DEFAULT"
 fi
 
 # --- Summary ---
