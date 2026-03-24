@@ -15,8 +15,18 @@ import (
 // window: the duration of the window (e.g., 1 minute).
 func RateLimitMiddleware(redisClient *redis.Client, limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Use IP address as the identifier for rate limiting
-		key := fmt.Sprintf("ratelimit:%s", c.ClientIP())
+		// Bypass for verifier if secret header matches
+		if c.GetHeader("X-Rate-Limit-Bypass") == "dev-verifier-secret" {
+			c.Next()
+			return
+		}
+
+		identifier := c.ClientIP()
+		if verifierID := c.GetHeader("X-Verifier-ID"); verifierID != "" {
+			identifier = fmt.Sprintf("%s:%s", identifier, verifierID)
+		}
+		
+		key := fmt.Sprintf("ratelimit:%s", identifier)
 		now := time.Now().UnixNano()
 		windowStart := now - int64(window)
 

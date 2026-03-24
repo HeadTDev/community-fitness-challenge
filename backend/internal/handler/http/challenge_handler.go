@@ -36,12 +36,13 @@ func (h *ChallengeHandler) getUserID(c *gin.Context) (uuid.UUID, bool) {
 }
 
 type createChallengeRequest struct {
-	Title       string               `json:"title" binding:"required,min=3,max=100"`
-	Description *string              `json:"description" binding:"omitempty,max=1000"`
-	StartDate   time.Time            `json:"start_date" binding:"required"`
-	EndDate     time.Time            `json:"end_date" binding:"required,gtfield=StartDate"`
-	Type        models.ChallengeType `json:"type" binding:"required"`
-	Goal        int                  `json:"goal" binding:"required,min=1"`
+	Title           string               `json:"title" binding:"required,min=3,max=100"`
+	Description     *string              `json:"description" binding:"omitempty,max=1000"`
+	StartDate       time.Time            `json:"start_date" binding:"required"`
+	EndDate         time.Time            `json:"end_date" binding:"required,gtfield=StartDate"`
+	Type            models.ChallengeType `json:"type" binding:"required"`
+	Goal            int                  `json:"goal" binding:"required,min=1"`
+	MaxParticipants int                  `json:"max_participants" binding:"omitempty,min=0"`
 }
 
 func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
@@ -57,12 +58,13 @@ func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 	}
 
 	challenge := &models.Challenge{
-		Title:       req.Title,
-		Description: req.Description,
-		StartDate:   req.StartDate,
-		EndDate:     req.EndDate,
-		Type:        req.Type,
-		Goal:        req.Goal,
+		Title:           req.Title,
+		Description:     req.Description,
+		StartDate:       req.StartDate,
+		EndDate:         req.EndDate,
+		Type:            req.Type,
+		Goal:            req.Goal,
+		MaxParticipants: req.MaxParticipants,
 	}
 
 	err := h.service.CreateChallenge(c.Request.Context(), userID, challenge)
@@ -205,4 +207,64 @@ func (h *ChallengeHandler) ListChallenges(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, responses)
+}
+
+func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	idParam := c.Param("id")
+	challengeID, err := uuid.Parse(idParam)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	err = h.service.JoinChallenge(c.Request.Context(), userID, challengeID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge not found")
+			return
+		}
+		if errors.Is(err, domain.ErrAlreadyExists) {
+			response.Error(c, http.StatusConflict, "ALREADY_JOINED", "You are already a participant of this challenge")
+			return
+		}
+		if errors.Is(err, domain.ErrChallengeFull) {
+			response.Error(c, http.StatusGone, "FULL", "Challenge is already full")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "Successfully joined challenge"})
+}
+
+func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	idParam := c.Param("id")
+	challengeID, err := uuid.Parse(idParam)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	err = h.service.LeaveChallenge(c.Request.Context(), userID, challengeID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Participation not found")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "Successfully left challenge"})
 }

@@ -10,4 +10,5 @@ var (
 	ErrUnauthorized   = errors.New("unauthorized access")
 	ErrInternal       = errors.New("internal server error")
 	ErrNotImplemented = errors.New("method not implemented")
+	ErrChallengeFull  = errors.New("challenge is already full")
 )

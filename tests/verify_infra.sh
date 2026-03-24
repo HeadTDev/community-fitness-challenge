@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 17 (Challenge API Handlers)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 18 (Challenge Join-Leave)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -235,8 +235,79 @@ else
     report_status "API: List Challenges (v1/challenges)" "FAIL" "Response: $LIST_CHALLENGES"
 fi
 
-# --- Phase 11: Security Hardening (STRESS TEST) ---
-print_section "Phase 11: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 11: Challenge Join-Leave ---
+print_section "Phase 11: Challenge Join-Leave & Redis Counter (Day 18)"
+
+    # 1. Create a challenge and publish it with max_participants=1
+    START_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    # Alpine/BusyBox compatible date math
+    END_DATE=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+    
+    CHALLENGE_JSON=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "title": "Join Test Challenge",
+            "description": "Test description",
+            "start_date": "'$START_DATE'",
+            "end_date": "'$END_DATE'",
+            "type": "steps",
+            "goal": 50000,
+            "max_participants": 1
+        }' "$API_URL/v1/challenges")
+
+CHALLENGE_ID=$(echo "$CHALLENGE_JSON" | jq -r '.data.id')
+
+if [[ "$CHALLENGE_ID" != "null" ]] && [[ -n "$CHALLENGE_ID" ]]; then
+    # Publish it
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$CHALLENGE_ID/publish" > /dev/null
+
+    # 2. Join (First User)
+    JOIN_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$CHALLENGE_ID/join")
+    if [[ $JOIN_RESP == *"Successfully joined challenge"* ]]; then
+        report_status "API: Join Challenge" "PASS"
+    else
+        report_status "API: Join Challenge" "FAIL" "Response: $JOIN_RESP"
+    fi
+
+    # 3. Check Redis Counter
+    REDIS_COUNT=$(redis-cli -h ${REDIS_HOST:-redis} GET "challenge_count:$CHALLENGE_ID" | tr -d '\r')
+    if [ "$REDIS_COUNT" == "1" ]; then
+        report_status "Redis: Atomic Participant Counter (INCR)" "PASS"
+    else
+        report_status "Redis: Atomic Participant Counter (INCR)" "FAIL" "Count: $REDIS_COUNT"
+    fi
+
+    # 4. Join (Second User) - Should be FULL (410)
+    # Register a second dev user
+    TOKEN2=$(curl -s -X POST "$API_URL/auth/register-dev" | jq -r '.data.access_token')
+    JOIN_FULL_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN2" "$API_URL/v1/challenges/$CHALLENGE_ID/join")
+    if [[ $JOIN_FULL_RESP == *"FULL"* ]]; then
+        report_status "API: Join Full Challenge (410)" "PASS"
+    else
+        report_status "API: Join Full Challenge (410)" "FAIL" "Response: $JOIN_FULL_RESP"
+    fi
+
+    # 5. Leave
+    LEAVE_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$CHALLENGE_ID/leave")
+    if [[ $LEAVE_RESP == *"Successfully left challenge"* ]]; then
+        report_status "API: Leave Challenge" "PASS"
+    else
+        report_status "API: Leave Challenge" "FAIL" "Response: $LEAVE_RESP"
+    fi
+
+    # 6. Check Redis Counter again
+    REDIS_COUNT=$(redis-cli -h ${REDIS_HOST:-redis} GET "challenge_count:$CHALLENGE_ID" | tr -d '\r')
+    if [ "$REDIS_COUNT" == "0" ] || [ -z "$REDIS_COUNT" ] || [ "$REDIS_COUNT" == "(nil)" ]; then
+        report_status "Redis: Atomic Participant Counter (DECR)" "PASS"
+    else
+        report_status "Redis: Atomic Participant Counter (DECR)" "FAIL" "Count: $REDIS_COUNT"
+    fi
+else
+    report_status "API: Challenge Join Setup" "FAIL" "Could not create challenge. Resp: $CHALLENGE_JSON"
+fi
+
+# --- Phase 12: Security Hardening (STRESS TEST) ---
+print_section "Phase 12: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - PERFORMED LAST
 RL_TRIGGERED=0

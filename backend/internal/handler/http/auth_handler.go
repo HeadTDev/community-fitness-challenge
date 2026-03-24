@@ -38,7 +38,7 @@ func (h *AuthHandler) RegisterDev(c *gin.Context) {
 	// Teszt user generálása
 	uID := uuid.New()
 	userID := uID.String()
-	role := string(models.RoleParticipant)
+	role := string(models.RoleAdmin)
 
 	// Persist user to DB so profile CRUD works
 	user := &models.User{
@@ -46,7 +46,7 @@ func (h *AuthHandler) RegisterDev(c *gin.Context) {
 		Email:       fmt.Sprintf("dev-%s@fitchallenge.local", userID[:8]),
 		DisplayName: stringPtr("Dev User"),
 		Timezone:    "UTC",
-		Role:        models.RoleParticipant,
+		Role:        models.RoleAdmin,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}

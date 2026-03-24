@@ -21,16 +21,16 @@ func NewChallengeRepo(pool *pgxpool.Pool) *ChallengeRepo {
 	return &ChallengeRepo{pool: pool}
 }
 
-const challengeColumns = `id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at, deleted_at`
+const challengeColumns = `id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, max_participants, participant_count, created_at, updated_at, deleted_at`
 
 func (r *ChallengeRepo) Create(ctx context.Context, c *models.Challenge) error {
 	query := `
-		INSERT INTO challenges (id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO challenges (id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, max_participants, participant_count, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := r.pool.Exec(ctx, query,
 		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
-		c.Status, c.Type, c.Goal, c.CreatedAt, c.UpdatedAt,
+		c.Status, c.Type, c.Goal, c.MaxParticipants, c.ParticipantCount, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating challenge: %w", err)
@@ -46,12 +46,12 @@ func (r *ChallengeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Chal
 func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 	query := `
 		UPDATE challenges
-		SET creator_id = $2, title = $3, description = $4, image_url = $5, start_date = $6, end_date = $7, status = $8, type = $9, goal = $10, updated_at = $11
+		SET creator_id = $2, title = $3, description = $4, image_url = $5, start_date = $6, end_date = $7, status = $8, type = $9, goal = $10, max_participants = $11, participant_count = $12, updated_at = $13
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 	_, err := r.pool.Exec(ctx, query,
 		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
-		c.Status, c.Type, c.Goal, c.UpdatedAt,
+		c.Status, c.Type, c.Goal, c.MaxParticipants, c.ParticipantCount, c.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("error updating challenge: %w", err)
@@ -102,7 +102,7 @@ func (r *ChallengeRepo) scanChallenge(row pgx.Row) (*models.Challenge, error) {
 	c := &models.Challenge{}
 	err := row.Scan(
 		&c.ID, &c.CreatorID, &c.Title, &c.Description, &c.ImageURL, &c.StartDate, &c.EndDate,
-		&c.Status, &c.Type, &c.Goal, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
+		&c.Status, &c.Type, &c.Goal, &c.MaxParticipants, &c.ParticipantCount, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
