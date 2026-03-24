@@ -19,10 +19,10 @@ import (
 
 type UserHandler struct {
 	repo     repositories.UserRepository
-	s3Client *aws.S3Client
+	s3Client aws.S3Client
 }
 
-func NewUserHandler(repo repositories.UserRepository, s3Client *aws.S3Client) *UserHandler {
+func NewUserHandler(repo repositories.UserRepository, s3Client aws.S3Client) *UserHandler {
 	return &UserHandler{
 		repo:     repo,
 		s3Client: s3Client,

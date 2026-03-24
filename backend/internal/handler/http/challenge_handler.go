@@ -236,7 +236,7 @@ func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
 			response.Error(c, http.StatusGone, "FULL", "Challenge is already full")
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to join challenge")
 		return
 	}
 

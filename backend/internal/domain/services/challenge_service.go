@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/aws"
@@ -11,7 +12,6 @@ import (
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 type ChallengeService interface {
@@ -25,37 +25,46 @@ type ChallengeService interface {
 }
 
 type challengeService struct {
+	dbPool            domain.DBPool
 	challengeRepo     repositories.ChallengeRepository
 	userRepo          repositories.UserRepository
 	participationRepo repositories.ParticipationRepository
-	s3Client          *aws.S3Client
-	redisClient       *redis.Client
+	s3Client          aws.S3Client
+	redisClient       domain.RedisClient
+	logger            *slog.Logger
 }
 
 const (
 	ChallengeBucket = "fitchallenge-assets"
 	ChallengePrefix = "challenges"
+
+	// Redis keys
 )
 
 func NewChallengeService(
+	dbPool domain.DBPool,
 	challengeRepo repositories.ChallengeRepository,
 	userRepo repositories.UserRepository,
 	participationRepo repositories.ParticipationRepository,
-	s3Client *aws.S3Client,
-	redisClient *redis.Client,
+	s3Client aws.S3Client,
+	redisClient domain.RedisClient,
+	logger *slog.Logger,
 ) ChallengeService {
 	return &challengeService{
+		dbPool:            dbPool,
 		challengeRepo:     challengeRepo,
 		userRepo:          userRepo,
 		participationRepo: participationRepo,
 		s3Client:          s3Client,
 		redisClient:       redisClient,
+		logger:            logger,
 	}
 }
 
 func (s *challengeService) checkCreatorRole(ctx context.Context, userID uuid.UUID) error {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
+		s.logger.Error("failed to get user for role check", "user_id", userID, "error", err)
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
@@ -163,19 +172,47 @@ func (s *challengeService) JoinChallenge(ctx context.Context, userID, challengeI
 		UpdatedAt:   time.Now(),
 	}
 
-	if err := s.participationRepo.Add(ctx, participation); err != nil {
+	// Begin Transaction
+	tx, err := s.dbPool.Begin(ctx)
+	if err != nil {
+		s.logger.Error("failed to begin transaction", "error", err)
+		return fmt.Errorf("transaction error: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Use repositories with transaction
+	challengeRepoTx := s.challengeRepo.(repositories.ChallengeRepositoryWithTx).WithTx(tx)
+	participationRepoTx := s.participationRepo.(repositories.ParticipationRepositoryWithTx).WithTx(tx)
+
+	if err := participationRepoTx.Add(ctx, participation); err != nil {
+		s.logger.Error("failed to add participation", "user_id", userID, "challenge_id", challengeID, "error", err)
 		return err
 	}
 
-	// Increment Redis counter
-	counterKey := fmt.Sprintf("challenge_count:%s", challengeID.String())
-	if err := s.redisClient.Incr(ctx, counterKey).Err(); err != nil {
-		// Log error but don't fail join (will sync later if needed)
-		fmt.Printf("Redis error incrementing counter: %v\n", err)
+	// Sync count within transaction
+	count, err := participationRepoTx.GetParticipantsCount(ctx, challengeID)
+	if err != nil {
+		return err
 	}
 
-	// Update PostgreSQL counter
-	return s.syncParticipantCount(ctx, challengeID)
+	challenge.ParticipantCount = count
+	challenge.UpdatedAt = time.Now()
+	if err := challengeRepoTx.Update(ctx, challenge); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error("failed to commit transaction", "error", err)
+		return fmt.Errorf("commit error: %w", err)
+	}
+
+	// Increment Redis counter (after successful DB commit)
+	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, challengeID.String())
+	if err := s.redisClient.Incr(ctx, counterKey).Err(); err != nil {
+		s.logger.Warn("Redis error incrementing counter", "challenge_id", challengeID, "error", err)
+	}
+
+	return nil
 }
 
 func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challengeID uuid.UUID) error {
@@ -184,23 +221,58 @@ func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challenge
 		return err // Likely domain.ErrNotFound
 	}
 
-	if err := s.participationRepo.Remove(ctx, userID, challengeID); err != nil {
+	// Begin Transaction
+	tx, err := s.dbPool.Begin(ctx)
+	if err != nil {
+		s.logger.Error("failed to begin transaction", "error", err)
+		return fmt.Errorf("transaction error: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Use repositories with transaction
+	challengeRepoTx := s.challengeRepo.(repositories.ChallengeRepositoryWithTx).WithTx(tx)
+	participationRepoTx := s.participationRepo.(repositories.ParticipationRepositoryWithTx).WithTx(tx)
+
+	if err := participationRepoTx.Remove(ctx, userID, challengeID); err != nil {
+		s.logger.Error("failed to remove participation", "user_id", userID, "challenge_id", challengeID, "error", err)
 		return err
 	}
 
-	// Decrement Redis counter
-	counterKey := fmt.Sprintf("challenge_count:%s", challengeID.String())
-	if err := s.redisClient.Decr(ctx, counterKey).Err(); err != nil {
-		fmt.Printf("Redis error decrementing counter: %v\n", err)
+	// Sync count within transaction
+	count, err := participationRepoTx.GetParticipantsCount(ctx, challengeID)
+	if err != nil {
+		return err
 	}
 
-	// Update PostgreSQL counter
-	return s.syncParticipantCount(ctx, challengeID)
+	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+
+	challenge.ParticipantCount = count
+	challenge.UpdatedAt = time.Now()
+	if err := challengeRepoTx.Update(ctx, challenge); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error("failed to commit transaction", "error", err)
+		return fmt.Errorf("commit error: %w", err)
+	}
+
+	// Decrement Redis counter
+	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, challengeID.String())
+	if err := s.redisClient.Decr(ctx, counterKey).Err(); err != nil {
+		s.logger.Warn("Redis error decrementing counter", "challenge_id", challengeID, "error", err)
+	}
+
+	return nil
 }
 
 func (s *challengeService) syncParticipantCount(ctx context.Context, challengeID uuid.UUID) error {
 	count, err := s.participationRepo.GetParticipantsCount(ctx, challengeID)
 	if err != nil {
+		s.logger.Error("failed to get participants count for sync", "challenge_id", challengeID, "error", err)
 		return err
 	}
 
@@ -222,7 +294,7 @@ func (s *challengeService) GetChallenge(ctx context.Context, id uuid.UUID) (*mod
 	}
 
 	// Try to get count from Redis for speed
-	counterKey := fmt.Sprintf("challenge_count:%s", id.String())
+	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, id.String())
 	val, err := s.redisClient.Get(ctx, counterKey).Int()
 	if err == nil {
 		challenge.ParticipantCount = val
@@ -238,7 +310,7 @@ func (s *challengeService) ListChallenges(ctx context.Context, status *models.Ch
 	}
 
 	for _, c := range challenges {
-		counterKey := fmt.Sprintf("challenge_count:%s", c.ID.String())
+		counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, c.ID.String())
 		val, err := s.redisClient.Get(ctx, counterKey).Int()
 		if err == nil {
 			c.ParticipantCount = val

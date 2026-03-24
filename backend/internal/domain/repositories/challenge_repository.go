@@ -14,3 +14,8 @@ type ChallengeRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, status *models.ChallengeStatus) ([]*models.Challenge, error)
 }
+
+type ChallengeRepositoryWithTx interface {
+	ChallengeRepository
+	WithTx(tx interface{}) ChallengeRepository
+}

@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	projectConfig "github.com/HeadTDev/fitchallenge/internal/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,7 +20,7 @@ func NewAWSConfig(ctx context.Context, cfg *projectConfig.Config) (aws.Config, e
 
 	// Ha van megadva AWSEndpoint, akkor LocalStack-et használunk (fejlesztés)
 	if cfg.AWS.Endpoint != "" {
-		log.Printf("☁️ Using LocalStack endpoint: %s", cfg.AWS.Endpoint)
+		slog.Info("☁️ Using LocalStack endpoint", "endpoint", cfg.AWS.Endpoint)
 		
 		// Senior tipp: LocalStack-hez fix teszt hitelesítő adatok kellenek.
 		opts = append(opts, config.WithCredentialsProvider(

@@ -8,17 +8,22 @@ import (
 
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
+	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ChallengeRepo struct {
-	pool *pgxpool.Pool
+	db domain.DB
 }
 
 func NewChallengeRepo(pool *pgxpool.Pool) *ChallengeRepo {
-	return &ChallengeRepo{pool: pool}
+	return &ChallengeRepo{db: pool}
+}
+
+func (r *ChallengeRepo) WithTx(tx any) repositories.ChallengeRepository {
+	return &ChallengeRepo{db: tx.(domain.DB)}
 }
 
 const challengeColumns = `id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, max_participants, participant_count, created_at, updated_at, deleted_at`
@@ -28,7 +33,7 @@ func (r *ChallengeRepo) Create(ctx context.Context, c *models.Challenge) error {
 		INSERT INTO challenges (id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, max_participants, participant_count, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
 		c.Status, c.Type, c.Goal, c.MaxParticipants, c.ParticipantCount, c.CreatedAt, c.UpdatedAt,
 	)
@@ -40,7 +45,7 @@ func (r *ChallengeRepo) Create(ctx context.Context, c *models.Challenge) error {
 
 func (r *ChallengeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Challenge, error) {
 	query := fmt.Sprintf("SELECT %s FROM challenges WHERE id = $1 AND deleted_at IS NULL", challengeColumns)
-	return r.scanChallenge(r.pool.QueryRow(ctx, query, id))
+	return r.scanChallenge(r.db.QueryRow(ctx, query, id))
 }
 
 func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
@@ -49,7 +54,7 @@ func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 		SET creator_id = $2, title = $3, description = $4, image_url = $5, start_date = $6, end_date = $7, status = $8, type = $9, goal = $10, max_participants = $11, participant_count = $12, updated_at = $13
 		WHERE id = $1 AND deleted_at IS NULL
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
 		c.Status, c.Type, c.Goal, c.MaxParticipants, c.ParticipantCount, c.UpdatedAt,
 	)
@@ -61,7 +66,7 @@ func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 
 func (r *ChallengeRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE challenges SET deleted_at = NOW() WHERE id = $1`
-	_, err := r.pool.Exec(ctx, query, id)
+	_, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("error deleting challenge: %w", err)
 	}
@@ -80,7 +85,7 @@ func (r *ChallengeRepo) List(ctx context.Context, status *models.ChallengeStatus
 	
 	queryBuilder.WriteString(" ORDER BY start_date ASC")
 
-	rows, err := r.pool.Query(ctx, queryBuilder.String(), args...)
+	rows, err := r.db.Query(ctx, queryBuilder.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("error listing challenges: %w", err)
 	}

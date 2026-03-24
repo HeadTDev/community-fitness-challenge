@@ -14,3 +14,8 @@ type ParticipationRepository interface {
 	GetParticipantsCount(ctx context.Context, challengeID uuid.UUID) (int, error)
 	ListByChallenge(ctx context.Context, challengeID uuid.UUID) ([]*models.Participation, error)
 }
+
+type ParticipationRepositoryWithTx interface {
+	ParticipationRepository
+	WithTx(tx interface{}) ParticipationRepository
+}

@@ -61,7 +61,7 @@ func main() {
 	participationRepo := postgres.NewParticipationRepo(dbPool)
 
 	// 6. Initialize Services
-	challengeService := services.NewChallengeService(challengeRepo, userRepo, participationRepo, s3Client, redisClient)
+	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, s3Client, redisClient, logger)
 
 	// 7. Initialize Gin router
 	if cfg.App.Env == "production" {

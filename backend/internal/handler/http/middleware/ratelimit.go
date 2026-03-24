@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -13,7 +14,7 @@ import (
 // RateLimitMiddleware provides a sliding window rate limiter using Redis.
 // limit: max requests allowed in the window.
 // window: the duration of the window (e.g., 1 minute).
-func RateLimitMiddleware(redisClient *redis.Client, limit int, window time.Duration) gin.HandlerFunc {
+func RateLimitMiddleware(redisClient domain.RedisClient, limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Bypass for verifier if secret header matches
 		if c.GetHeader("X-Rate-Limit-Bypass") == "dev-verifier-secret" {
@@ -26,7 +27,7 @@ func RateLimitMiddleware(redisClient *redis.Client, limit int, window time.Durat
 			identifier = fmt.Sprintf("%s:%s", identifier, verifierID)
 		}
 		
-		key := fmt.Sprintf("ratelimit:%s", identifier)
+		key := fmt.Sprintf(domain.RedisKeyRateLimit, identifier)
 		now := time.Now().UnixNano()
 		windowStart := now - int64(window)
 
@@ -67,6 +68,6 @@ func RateLimitMiddleware(redisClient *redis.Client, limit int, window time.Durat
 }
 
 // GlobalRateLimit is a helper to apply a standard rate limit (e.g., 60 requests per minute).
-func GlobalRateLimit(redisClient *redis.Client) gin.HandlerFunc {
+func GlobalRateLimit(redisClient domain.RedisClient) gin.HandlerFunc {
 	return RateLimitMiddleware(redisClient, 60, time.Minute)
 }

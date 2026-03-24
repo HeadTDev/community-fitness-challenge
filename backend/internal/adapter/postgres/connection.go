@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/config"
@@ -34,6 +34,6 @@ func NewConnection(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, erro
 		return nil, fmt.Errorf("error pinging postgres: %w", err)
 	}
 
-	log.Printf("🐘 Connected to PostgreSQL (pool size: %d-%d)", cfg.DB.MinConns, cfg.DB.MaxConns)
+	slog.Info("🐘 Connected to PostgreSQL", "min_conns", cfg.DB.MinConns, "max_conns", cfg.DB.MaxConns)
 	return pool, nil
 }

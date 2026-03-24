@@ -7,17 +7,22 @@ import (
 
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
+	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-)
+	)
 
 type ParticipationRepo struct {
-	pool *pgxpool.Pool
+	db domain.DB
 }
 
 func NewParticipationRepo(pool *pgxpool.Pool) *ParticipationRepo {
-	return &ParticipationRepo{pool: pool}
+	return &ParticipationRepo{db: pool}
+}
+
+func (r *ParticipationRepo) WithTx(tx any) repositories.ParticipationRepository {
+	return &ParticipationRepo{db: tx.(domain.DB)}
 }
 
 const participationColumns = `id, user_id, challenge_id, current_score, rank, joined_at, updated_at`
@@ -27,7 +32,7 @@ func (r *ParticipationRepo) Add(ctx context.Context, p *models.Participation) er
 		INSERT INTO participations (id, user_id, challenge_id, current_score, rank, joined_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.db.Exec(ctx, query,
 		p.ID, p.UserID, p.ChallengeID, p.CurrentScore, p.Rank, p.JoinedAt, p.UpdatedAt,
 	)
 	if err != nil {
@@ -38,7 +43,7 @@ func (r *ParticipationRepo) Add(ctx context.Context, p *models.Participation) er
 
 func (r *ParticipationRepo) Remove(ctx context.Context, userID, challengeID uuid.UUID) error {
 	query := `DELETE FROM participations WHERE user_id = $1 AND challenge_id = $2`
-	_, err := r.pool.Exec(ctx, query, userID, challengeID)
+	_, err := r.db.Exec(ctx, query, userID, challengeID)
 	if err != nil {
 		return fmt.Errorf("error removing participation: %w", err)
 	}
@@ -48,7 +53,7 @@ func (r *ParticipationRepo) Remove(ctx context.Context, userID, challengeID uuid
 func (r *ParticipationRepo) Get(ctx context.Context, userID, challengeID uuid.UUID) (*models.Participation, error) {
 	query := fmt.Sprintf("SELECT %s FROM participations WHERE user_id = $1 AND challenge_id = $2", participationColumns)
 	p := &models.Participation{}
-	err := r.pool.QueryRow(ctx, query, userID, challengeID).Scan(
+	err := r.db.QueryRow(ctx, query, userID, challengeID).Scan(
 		&p.ID, &p.UserID, &p.ChallengeID, &p.CurrentScore, &p.Rank, &p.JoinedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -63,7 +68,7 @@ func (r *ParticipationRepo) Get(ctx context.Context, userID, challengeID uuid.UU
 func (r *ParticipationRepo) GetParticipantsCount(ctx context.Context, challengeID uuid.UUID) (int, error) {
 	query := `SELECT COUNT(*) FROM participations WHERE challenge_id = $1`
 	var count int
-	err := r.pool.QueryRow(ctx, query, challengeID).Scan(&count)
+	err := r.db.QueryRow(ctx, query, challengeID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("error getting participants count: %w", err)
 	}
@@ -72,7 +77,7 @@ func (r *ParticipationRepo) GetParticipantsCount(ctx context.Context, challengeI
 
 func (r *ParticipationRepo) ListByChallenge(ctx context.Context, challengeID uuid.UUID) ([]*models.Participation, error) {
 	query := fmt.Sprintf("SELECT %s FROM participations WHERE challenge_id = $1 ORDER BY current_score DESC", participationColumns)
-	rows, err := r.pool.Query(ctx, query, challengeID)
+	rows, err := r.db.Query(ctx, query, challengeID)
 	if err != nil {
 		return nil, fmt.Errorf("error listing participations: %w", err)
 	}
