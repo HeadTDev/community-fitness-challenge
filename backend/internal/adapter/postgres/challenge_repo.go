@@ -21,15 +21,15 @@ func NewChallengeRepo(pool *pgxpool.Pool) *ChallengeRepo {
 	return &ChallengeRepo{pool: pool}
 }
 
-const challengeColumns = `id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at, deleted_at`
+const challengeColumns = `id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at, deleted_at`
 
 func (r *ChallengeRepo) Create(ctx context.Context, c *models.Challenge) error {
 	query := `
-		INSERT INTO challenges (id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO challenges (id, creator_id, title, description, image_url, start_date, end_date, status, type, goal, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 	_, err := r.pool.Exec(ctx, query,
-		c.ID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
+		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
 		c.Status, c.Type, c.Goal, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
@@ -46,11 +46,11 @@ func (r *ChallengeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Chal
 func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 	query := `
 		UPDATE challenges
-		SET title = $2, description = $3, image_url = $4, start_date = $5, end_date = $6, status = $7, type = $8, goal = $9, updated_at = $10
+		SET creator_id = $2, title = $3, description = $4, image_url = $5, start_date = $6, end_date = $7, status = $8, type = $9, goal = $10, updated_at = $11
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 	_, err := r.pool.Exec(ctx, query,
-		c.ID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
+		c.ID, c.CreatorID, c.Title, c.Description, c.ImageURL, c.StartDate, c.EndDate,
 		c.Status, c.Type, c.Goal, c.UpdatedAt,
 	)
 	if err != nil {
@@ -101,7 +101,7 @@ func (r *ChallengeRepo) List(ctx context.Context, status *models.ChallengeStatus
 func (r *ChallengeRepo) scanChallenge(row pgx.Row) (*models.Challenge, error) {
 	c := &models.Challenge{}
 	err := row.Scan(
-		&c.ID, &c.Title, &c.Description, &c.ImageURL, &c.StartDate, &c.EndDate,
+		&c.ID, &c.CreatorID, &c.Title, &c.Description, &c.ImageURL, &c.StartDate, &c.EndDate,
 		&c.Status, &c.Type, &c.Goal, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
 	)
 	if err != nil {

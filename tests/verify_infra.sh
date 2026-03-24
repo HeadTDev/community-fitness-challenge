@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 16 (Challenge Service + S3 Logic)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 17 (Challenge API Handlers)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -144,8 +144,8 @@ else
     report_status "Avatar Upload: S3 + DB Integration" "FAIL"
 fi
 
-# --- Phase 7: Hardening ---
-print_section "Phase 7: Hardening & Reliability (Day 13)"
+# --- Phase 7: Data Validation ---
+print_section "Phase 7: Data Integrity (Day 13-14)"
 
 VALID_FAIL=$(curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
@@ -157,25 +157,6 @@ else
     report_status "Input Validation: Empty Fields Reject" "FAIL"
 fi
 
-# Rate Limit Test (65 requests to trigger 429)
-RL_TRIGGERED=0
-for i in $(seq 1 65); do
-    RESP=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz")
-    if [ "$RESP" == "429" ]; then
-        RL_TRIGGERED=1
-        break
-    fi
-done
-
-if [ $RL_TRIGGERED -eq 1 ]; then
-    report_status "Rate Limiting: Sliding Window (429)" "PASS"
-else
-    report_status "Rate Limiting: Sliding Window (429)" "FAIL"
-fi
-
-# --- Phase 8: Challenge Schema ---
-print_section "Phase 8: Challenge & Competition Schema (Day 14)"
-
 CHALLENGE_TABLE=$(psql "$DB_CONN" -t -c "SELECT column_name FROM information_schema.columns WHERE table_name='challenges' AND column_name='title';" | xargs || true)
 if [[ -n "$CHALLENGE_TABLE" ]]; then
     report_status "Challenge Table Schema (Title column)" "PASS"
@@ -183,12 +164,15 @@ else
     report_status "Challenge Table Schema (Title column)" "FAIL"
 fi
 
-# --- Phase 9: Challenge Repository CRUD ---
-print_section "Phase 9: Challenge Repository CRUD (Day 15)"
+# --- Phase 8: Challenge Repository CRUD ---
+print_section "Phase 8: Challenge Repository CRUD (Day 15)"
+
+# Get a valid user ID for creator_id (required by foreign key constraint)
+VALID_USER_ID=$(psql "$DB_CONN" -t -c "SELECT id FROM users LIMIT 1;" | xargs || true)
 
 # 1. Create (Insert)
-CHALLENGE_ID=$(psql "$DB_CONN" -t -A -q -c "INSERT INTO challenges (id, title, description, type, goal, start_date, end_date) \
-    VALUES (gen_random_uuid(), 'Test Challenge', 'Description', 'steps', 10000, now(), now() + interval '7 days') \
+CHALLENGE_ID=$(psql "$DB_CONN" -t -A -q -c "INSERT INTO challenges (id, creator_id, title, description, type, goal, start_date, end_date) \
+    VALUES (gen_random_uuid(), '$VALID_USER_ID', 'Test Challenge', 'Description', 'steps', 10000, now(), now() + interval '7 days') \
     RETURNING id;" | awk '{print $1}' || true)
 
 if [[ -n "$CHALLENGE_ID" && "$CHALLENGE_ID" != "null" ]]; then
@@ -223,8 +207,8 @@ else
     report_status "Repository: Create Challenge" "FAIL" "Insert failed"
 fi
 
-# --- Phase 10: Challenge Service & Ownership ---
-print_section "Phase 10: Challenge Service & Ownership (Day 16)"
+# --- Phase 9: Challenge Service & Ownership ---
+print_section "Phase 9: Challenge Service & Ownership (Day 16)"
 
 CREATOR_COL=$(psql "$DB_CONN" -t -c "SELECT column_name FROM information_schema.columns WHERE table_name='challenges' AND column_name='creator_id';" | xargs || true)
 if [[ -n "$CREATOR_COL" ]]; then
@@ -238,6 +222,36 @@ if [[ "$STATUS_DEFAULT" == "'draft'::character varying" ]] || [[ "$STATUS_DEFAUL
     report_status "Challenge Lifecycle (Draft status default)" "PASS"
 else
     report_status "Challenge Lifecycle (Draft status default)" "FAIL" "Default: $STATUS_DEFAULT"
+fi
+
+# --- Phase 10: Challenge API Handlers ---
+print_section "Phase 10: Challenge API Handlers (Day 17)"
+
+# Test List Challenges (should be accessible by any authenticated user)
+LIST_CHALLENGES=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges")
+if [[ $LIST_CHALLENGES == *"\"success\":true"* ]]; then
+    report_status "API: List Challenges (v1/challenges)" "PASS"
+else
+    report_status "API: List Challenges (v1/challenges)" "FAIL" "Response: $LIST_CHALLENGES"
+fi
+
+# --- Phase 11: Security Hardening (STRESS TEST) ---
+print_section "Phase 11: Security Hardening & Rate Limiting (Day 13)"
+
+# Rate Limit Test (65 requests to trigger 429) - PERFORMED LAST
+RL_TRIGGERED=0
+for i in $(seq 1 65); do
+    RESP=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz")
+    if [ "$RESP" == "429" ]; then
+        RL_TRIGGERED=1
+        break
+    fi
+done
+
+if [ $RL_TRIGGERED -eq 1 ]; then
+    report_status "Rate Limiting: Sliding Window (429)" "PASS"
+else
+    report_status "Rate Limiting: Sliding Window (429)" "FAIL"
 fi
 
 # --- Summary ---

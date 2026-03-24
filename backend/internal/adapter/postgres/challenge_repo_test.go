@@ -26,11 +26,14 @@ func TestChallengeRepo(t *testing.T) {
 
 	repo := NewChallengeRepo(pool)
 
+	// Create a test user to act as creator if foreign key constraint is active
+	creatorID := uuid.New()
 	t.Run("Create and GetByID", func(t *testing.T) {
 		id := uuid.New()
 		desc := "Test Description"
 		challenge := &models.Challenge{
 			ID:          id,
+			CreatorID:   creatorID,
 			Title:       "Test Challenge",
 			Description: &desc,
 			StartDate:   time.Now().Add(24 * time.Hour),
@@ -50,12 +53,14 @@ func TestChallengeRepo(t *testing.T) {
 		require.NotNil(t, fetched)
 		assert.Equal(t, challenge.Title, fetched.Title)
 		assert.Equal(t, challenge.Goal, fetched.Goal)
+		assert.Equal(t, creatorID, fetched.CreatorID)
 	})
 
 	t.Run("Update", func(t *testing.T) {
 		id := uuid.New()
 		challenge := &models.Challenge{
 			ID:        id,
+			CreatorID: creatorID,
 			Title:     "Old Title",
 			StartDate: time.Now(),
 			EndDate:   time.Now().Add(time.Hour),
@@ -81,6 +86,7 @@ func TestChallengeRepo(t *testing.T) {
 		id := uuid.New()
 		challenge := &models.Challenge{
 			ID:        id,
+			CreatorID: creatorID,
 			Title:     "To Delete",
 			StartDate: time.Now(),
 			EndDate:   time.Now().Add(time.Hour),
@@ -104,6 +110,7 @@ func TestChallengeRepo(t *testing.T) {
 		id := uuid.New()
 		challenge := &models.Challenge{
 			ID:        id,
+			CreatorID: creatorID,
 			Title:     "Finished Challenge",
 			StartDate: time.Now().Add(-48 * time.Hour),
 			EndDate:   time.Now().Add(-24 * time.Hour),

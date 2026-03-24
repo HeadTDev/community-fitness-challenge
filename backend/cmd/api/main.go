@@ -14,6 +14,7 @@ import (
 	"github.com/HeadTDev/fitchallenge/internal/adapter/redis"
 	"github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
+	"github.com/HeadTDev/fitchallenge/internal/domain/services"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
 	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
@@ -56,8 +57,12 @@ func main() {
 
 	// 5. Initialize Repositories
 	userRepo := postgres.NewUserRepo(dbPool)
+	challengeRepo := postgres.NewChallengeRepo(dbPool)
 
-	// 6. Initialize Gin router
+	// 6. Initialize Services
+	challengeService := services.NewChallengeService(challengeRepo, userRepo, s3Client)
+
+	// 7. Initialize Gin router
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -74,6 +79,7 @@ func main() {
 	healthHandler := handler.NewHealthHandler(dbPool)
 	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
 	userHandler := handler.NewUserHandler(userRepo, s3Client)
+	challengeHandler := handler.NewChallengeHandler(challengeService)
 
 	// Basic health routes
 	r.GET("/healthz", healthHandler.Healthz)
@@ -95,6 +101,13 @@ func main() {
 		v1.PUT("/users/profile", userHandler.UpdateProfile)
 		v1.POST("/users/profile/avatar", userHandler.UploadAvatar)
 		
+		// Challenge routes
+		v1.POST("/challenges", challengeHandler.CreateChallenge)
+		v1.GET("/challenges", challengeHandler.ListChallenges)
+		v1.GET("/challenges/:id", challengeHandler.GetChallenge)
+		v1.POST("/challenges/:id/publish", challengeHandler.PublishChallenge)
+		v1.POST("/challenges/:id/image", challengeHandler.UploadCoverImage)
+
 		v1.GET("/aws-status", healthHandler.AWSStatus)
 	}
 
