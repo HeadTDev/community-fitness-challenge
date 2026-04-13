@@ -22,6 +22,12 @@ type ChallengeService interface {
 	ListChallenges(ctx context.Context, status *models.ChallengeStatus) ([]*models.Challenge, error)
 	JoinChallenge(ctx context.Context, userID, challengeID uuid.UUID) error
 	LeaveChallenge(ctx context.Context, userID, challengeID uuid.UUID) error
+
+	// Prize methods
+	AddPrize(ctx context.Context, creatorID, challengeID uuid.UUID, prize *models.Prize) error
+	UpdatePrize(ctx context.Context, creatorID, challengeID, prizeID uuid.UUID, prize *models.Prize) error
+	DeletePrize(ctx context.Context, creatorID, challengeID, prizeID uuid.UUID) error
+	GetPrizesByChallengeID(ctx context.Context, challengeID uuid.UUID) ([]*models.Prize, error)
 }
 
 type challengeService struct {
@@ -29,6 +35,7 @@ type challengeService struct {
 	challengeRepo     repositories.ChallengeRepository
 	userRepo          repositories.UserRepository
 	participationRepo repositories.ParticipationRepository
+	prizeRepo         repositories.PrizeRepository
 	s3Client          aws.S3Client
 	redisClient       domain.RedisClient
 	logger            *slog.Logger
@@ -46,6 +53,7 @@ func NewChallengeService(
 	challengeRepo repositories.ChallengeRepository,
 	userRepo repositories.UserRepository,
 	participationRepo repositories.ParticipationRepository,
+	prizeRepo repositories.PrizeRepository,
 	s3Client aws.S3Client,
 	redisClient domain.RedisClient,
 	logger *slog.Logger,
@@ -55,6 +63,7 @@ func NewChallengeService(
 		challengeRepo:     challengeRepo,
 		userRepo:          userRepo,
 		participationRepo: participationRepo,
+		prizeRepo:         prizeRepo,
 		s3Client:          s3Client,
 		redisClient:       redisClient,
 		logger:            logger,
@@ -318,4 +327,103 @@ func (s *challengeService) ListChallenges(ctx context.Context, status *models.Ch
 	}
 
 	return challenges, nil
+}
+
+func (s *challengeService) AddPrize(ctx context.Context, creatorID, challengeID uuid.UUID, prize *models.Prize) error {
+	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+
+	// Authorization check
+	if challenge.CreatorID != creatorID {
+		user, err := s.userRepo.GetByID(ctx, creatorID)
+		if err != nil || user.Role != models.RoleAdmin {
+			return domain.ErrUnauthorized
+		}
+	}
+
+	// Status check: Only draft challenges can have prizes added
+	if challenge.Status != models.ChallengeStatusDraft {
+		return fmt.Errorf("prizes can only be added to draft challenges: %w", domain.ErrBadRequest)
+	}
+
+	prize.ID = uuid.New()
+	prize.ChallengeID = challengeID
+	prize.CreatedAt = time.Now()
+	prize.UpdatedAt = time.Now()
+
+	return s.prizeRepo.Create(ctx, prize)
+}
+
+func (s *challengeService) UpdatePrize(ctx context.Context, creatorID, challengeID, prizeID uuid.UUID, updatedPrize *models.Prize) error {
+	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+
+	// Authorization check
+	if challenge.CreatorID != creatorID {
+		user, err := s.userRepo.GetByID(ctx, creatorID)
+		if err != nil || user.Role != models.RoleAdmin {
+			return domain.ErrUnauthorized
+		}
+	}
+
+	// Status check
+	if challenge.Status != models.ChallengeStatusDraft {
+		return fmt.Errorf("prizes can only be modified in draft challenges: %w", domain.ErrBadRequest)
+	}
+
+	existingPrize, err := s.prizeRepo.GetByID(ctx, prizeID)
+	if err != nil {
+		return err
+	}
+
+	if existingPrize.ChallengeID != challengeID {
+		return fmt.Errorf("prize does not belong to this challenge: %w", domain.ErrBadRequest)
+	}
+
+	existingPrize.Title = updatedPrize.Title
+	existingPrize.Description = updatedPrize.Description
+	existingPrize.ImageURL = updatedPrize.ImageURL
+	existingPrize.RankRequired = updatedPrize.RankRequired
+	existingPrize.UpdatedAt = time.Now()
+
+	return s.prizeRepo.Update(ctx, existingPrize)
+}
+
+func (s *challengeService) DeletePrize(ctx context.Context, creatorID, challengeID, prizeID uuid.UUID) error {
+	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+
+	// Authorization check
+	if challenge.CreatorID != creatorID {
+		user, err := s.userRepo.GetByID(ctx, creatorID)
+		if err != nil || user.Role != models.RoleAdmin {
+			return domain.ErrUnauthorized
+		}
+	}
+
+	// Status check
+	if challenge.Status != models.ChallengeStatusDraft {
+		return fmt.Errorf("prizes can only be deleted from draft challenges: %w", domain.ErrBadRequest)
+	}
+
+	existingPrize, err := s.prizeRepo.GetByID(ctx, prizeID)
+	if err != nil {
+		return err
+	}
+
+	if existingPrize.ChallengeID != challengeID {
+		return fmt.Errorf("prize does not belong to this challenge: %w", domain.ErrBadRequest)
+	}
+
+	return s.prizeRepo.Delete(ctx, prizeID)
+}
+
+func (s *challengeService) GetPrizesByChallengeID(ctx context.Context, challengeID uuid.UUID) ([]*models.Prize, error) {
+	return s.prizeRepo.GetByChallengeID(ctx, challengeID)
 }

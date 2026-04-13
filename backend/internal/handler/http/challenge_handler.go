@@ -45,6 +45,13 @@ type createChallengeRequest struct {
 	MaxParticipants int                  `json:"max_participants" binding:"omitempty,min=0"`
 }
 
+type prizeRequest struct {
+	Title        string  `json:"title" binding:"required,min=3,max=100"`
+	Description  *string `json:"description" binding:"omitempty,max=500"`
+	ImageURL     *string `json:"image_url" binding:"omitempty,url"`
+	RankRequired int     `json:"rank_required" binding:"required,min=1"`
+}
+
 func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 	userID, ok := h.getUserID(c)
 	if !ok {
@@ -78,6 +85,165 @@ func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, challenge.ToResponse())
+}
+
+func (h *ChallengeHandler) AddPrize(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	idParam := c.Param("id")
+	challengeID, err := uuid.Parse(idParam)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	var req prizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		return
+	}
+
+	prize := &models.Prize{
+		Title:        req.Title,
+		Description:  req.Description,
+		ImageURL:     req.ImageURL,
+		RankRequired: req.RankRequired,
+	}
+
+	err = h.service.AddPrize(c.Request.Context(), userID, challengeID, prize)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge not found")
+			return
+		}
+		if errors.Is(err, domain.ErrUnauthorized) {
+			response.Error(c, http.StatusForbidden, "FORBIDDEN", "Not authorized to add prizes to this challenge")
+			return
+		}
+		if errors.Is(err, domain.ErrBadRequest) {
+			response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, prize.ToResponse())
+}
+
+func (h *ChallengeHandler) UpdatePrize(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	prizeID, err := uuid.Parse(c.Param("prize_id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_PRIZE_ID", "Invalid prize ID")
+		return
+	}
+
+	var req prizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		return
+	}
+
+	prize := &models.Prize{
+		Title:        req.Title,
+		Description:  req.Description,
+		ImageURL:     req.ImageURL,
+		RankRequired: req.RankRequired,
+	}
+
+	err = h.service.UpdatePrize(c.Request.Context(), userID, challengeID, prizeID, prize)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Prize or challenge not found")
+			return
+		}
+		if errors.Is(err, domain.ErrUnauthorized) {
+			response.Error(c, http.StatusForbidden, "FORBIDDEN", "Not authorized to update prizes for this challenge")
+			return
+		}
+		if errors.Is(err, domain.ErrBadRequest) {
+			response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "Prize updated successfully"})
+}
+
+func (h *ChallengeHandler) DeletePrize(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	prizeID, err := uuid.Parse(c.Param("prize_id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_PRIZE_ID", "Invalid prize ID")
+		return
+	}
+
+	err = h.service.DeletePrize(c.Request.Context(), userID, challengeID, prizeID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Prize or challenge not found")
+			return
+		}
+		if errors.Is(err, domain.ErrUnauthorized) {
+			response.Error(c, http.StatusForbidden, "FORBIDDEN", "Not authorized to delete prizes for this challenge")
+			return
+		}
+		if errors.Is(err, domain.ErrBadRequest) {
+			response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "Prize deleted successfully"})
+}
+
+func (h *ChallengeHandler) GetPrizes(c *gin.Context) {
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	prizes, err := h.service.GetPrizesByChallengeID(c.Request.Context(), challengeID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to fetch prizes")
+		return
+	}
+
+	responses := make([]models.PrizeResponse, len(prizes))
+	for i, p := range prizes {
+		responses[i] = p.ToResponse()
+	}
+
+	response.Success(c, http.StatusOK, responses)
 }
 
 func (h *ChallengeHandler) PublishChallenge(c *gin.Context) {

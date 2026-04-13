@@ -59,9 +59,10 @@ func main() {
 	userRepo := postgres.NewUserRepo(dbPool)
 	challengeRepo := postgres.NewChallengeRepo(dbPool)
 	participationRepo := postgres.NewParticipationRepo(dbPool)
+	prizeRepo := postgres.NewPrizeRepo(dbPool)
 
 	// 6. Initialize Services
-	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, s3Client, redisClient, logger)
+	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, logger)
 
 	// 7. Initialize Gin router
 	if cfg.App.Env == "production" {
@@ -110,6 +111,12 @@ func main() {
 		v1.POST("/challenges/:id/image", challengeHandler.UploadCoverImage)
 		v1.POST("/challenges/:id/join", challengeHandler.JoinChallenge)
 		v1.POST("/challenges/:id/leave", challengeHandler.LeaveChallenge)
+
+		// Prize routes
+		v1.GET("/challenges/:id/prizes", challengeHandler.GetPrizes)
+		v1.POST("/challenges/:id/prizes", challengeHandler.AddPrize)
+		v1.PUT("/challenges/:id/prizes/:prize_id", challengeHandler.UpdatePrize)
+		v1.DELETE("/challenges/:id/prizes/:prize_id", challengeHandler.DeletePrize)
 
 		v1.GET("/aws-status", healthHandler.AWSStatus)
 	}

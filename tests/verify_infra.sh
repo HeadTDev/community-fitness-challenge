@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 18 (Challenge Join-Leave)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 19 (Prize Management)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -306,8 +306,73 @@ else
     report_status "API: Challenge Join Setup" "FAIL" "Could not create challenge. Resp: $CHALLENGE_JSON"
 fi
 
-# --- Phase 12: Security Hardening (STRESS TEST) ---
-print_section "Phase 12: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 12: Prize Management ---
+print_section "Phase 12: Prize Management (Day 19)"
+
+# Use current timestamp for unique titles to avoid potential conflicts
+TS=$(date +%s)
+START_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+END_DATE=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+
+DRAFT_CHALLENGE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Prize Test Challenge '$TS'",
+        "description": "Prize test description",
+        "start_date": "'$START_DATE'",
+        "end_date": "'$END_DATE'",
+        "type": "calories",
+        "goal": 10000
+    }' "$API_URL/v1/challenges")
+
+PRIZE_CHALLENGE_ID=$(echo "$DRAFT_CHALLENGE" | jq -r '.data.id')
+
+if [[ "$PRIZE_CHALLENGE_ID" != "null" ]] && [[ -n "$PRIZE_CHALLENGE_ID" ]]; then
+    # 2. Add a prize to draft
+    ADD_PRIZE_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "title": "Gold Medal",
+            "description": "For the first place",
+            "rank_required": 1
+        }' "$API_URL/v1/challenges/$PRIZE_CHALLENGE_ID/prizes")
+    
+    if [[ $ADD_PRIZE_RESP == *"Gold Medal"* ]]; then
+        report_status "API: Add Prize to Draft" "PASS"
+    else
+        report_status "API: Add Prize to Draft" "FAIL" "Resp: $ADD_PRIZE_RESP (URL: $API_URL/v1/challenges/$PRIZE_CHALLENGE_ID/prizes)"
+    fi
+
+    # 3. List prizes
+    LIST_PRIZES=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$PRIZE_CHALLENGE_ID/prizes")
+    if [[ $LIST_PRIZES == *"Gold Medal"* ]]; then
+        report_status "API: List Prizes" "PASS"
+    else
+        report_status "API: List Prizes" "FAIL" "Resp: $LIST_PRIZES"
+    fi
+
+    # 4. Publish challenge
+    PUBLISH_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$PRIZE_CHALLENGE_ID/publish")
+
+    # 5. Try to add prize to published (Should FAIL with 400)
+    ADD_LATE_PRIZE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "title": "Silver Medal",
+            "rank_required": 2
+        }' "$API_URL/v1/challenges/$PRIZE_CHALLENGE_ID/prizes")
+    
+    if [[ $ADD_LATE_PRIZE == *"BAD_REQUEST"* ]]; then
+        report_status "API: Add Prize to Published Rejected" "PASS"
+    else
+        report_status "API: Add Prize to Published Rejected" "FAIL" "Resp: $ADD_LATE_PRIZE"
+    fi
+else
+    report_status "API: Prize Management Setup" "FAIL" "Could not create draft challenge. Resp: $DRAFT_CHALLENGE"
+fi
+
+# --- Phase 13: Security Hardening (STRESS TEST) ---
+print_section "Phase 13: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - PERFORMED LAST
 RL_TRIGGERED=0
