@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 19 (Prize Management)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 20 (Seed & Documentation)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -371,8 +371,38 @@ else
     report_status "API: Prize Management Setup" "FAIL" "Could not create draft challenge. Resp: $DRAFT_CHALLENGE"
 fi
 
-# --- Phase 13: Security Hardening (STRESS TEST) ---
-print_section "Phase 13: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 13: Seed Data Verification ---
+print_section "Phase 13: Seed Data & Documentation (Day 20)"
+
+USER_COUNT=$(psql "$DB_CONN" -t -c "SELECT count(*) FROM users WHERE email LIKE '%@fitchallenge.com';" | xargs || true)
+if [ "$USER_COUNT" -ge 5 ]; then
+    report_status "Seed: User Generation (>= 5)" "PASS" "Count: $USER_COUNT"
+else
+    report_status "Seed: User Generation (>= 5)" "FAIL" "Count: $USER_COUNT"
+fi
+
+CHALLENGE_COUNT=$(psql "$DB_CONN" -t -c "SELECT count(*) FROM challenges WHERE creator_id IN (SELECT id FROM users WHERE role='creator');" | xargs || true)
+if [ "$CHALLENGE_COUNT" -ge 3 ]; then
+    report_status "Seed: Challenge Generation (>= 3)" "PASS" "Count: $CHALLENGE_COUNT"
+else
+    report_status "Seed: Challenge Generation (>= 3)" "FAIL" "Count: $CHALLENGE_COUNT"
+fi
+
+PRIZE_COUNT=$(psql "$DB_CONN" -t -c "SELECT count(*) FROM prizes;" | xargs || true)
+if [ "$PRIZE_COUNT" -ge 6 ]; then
+    report_status "Seed: Prize Generation (>= 6)" "PASS" "Count: $PRIZE_COUNT"
+else
+    report_status "Seed: Prize Generation (>= 6)" "FAIL" "Count: $PRIZE_COUNT"
+fi
+
+if [ -f "/app/backend/docs/community-fitness-challenge.postman_collection.json" ]; then
+    report_status "Docs: Postman Collection Export" "PASS"
+else
+    report_status "Docs: Postman Collection Export" "FAIL"
+fi
+
+# --- Phase 14: Security Hardening (STRESS TEST) ---
+print_section "Phase 14: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - PERFORMED LAST
 RL_TRIGGERED=0

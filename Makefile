@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api aws-status verify db-migrate db-migrate-down db-shell db-tables restart-api test clean status help
+.PHONY: dev stop logs-api aws-status verify db-migrate seed db-migrate-down db-shell db-tables restart-api test clean status help
 
 # Start services in the background
 dev:
@@ -30,6 +30,10 @@ verify:
 # Run all UP database migrations
 db-migrate:
 	docker compose run --rm migrate
+
+# Run database seeding
+seed:
+	docker compose run --rm migrate go run cmd/seed/main.go
 
 # Rollback one database migration
 db-migrate-down:
@@ -65,6 +69,7 @@ help:
 	@echo "  aws-status      - List simulated AWS resources"
 	@echo "  verify          - Run Day-to-Day verification script"
 	@echo "  db-migrate      - Apply pending migrations"
+	@echo "  seed            - Populate the database with sample data"
 	@echo "  db-migrate-down - Rollback last migration"
 	@echo "  db-tables       - List all database tables"
 	@echo "  db-shell        - Enter PostgreSQL shell"

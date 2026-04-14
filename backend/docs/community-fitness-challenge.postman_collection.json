@@ -1,0 +1,700 @@
+{
+	"info": {
+		"_postman_id": "8c48a901-71e9-44d3-ae33-a3d8b4e4d5f4",
+		"name": "Community Fitness Challenge API",
+		"description": "API collection for the Community Fitness Challenge project.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Healthz",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/healthz",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"healthz"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Readyz",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/readyz",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"readyz"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AWS Status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/aws-status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"aws-status"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register Dev",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"email": "dev-user@example.com",
+								"role": "creator"
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register-dev",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register-dev"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"refresh_token": "{{refreshToken}}"
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/refresh",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User",
+			"item": [
+				{
+					"name": "Me",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"users",
+								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"users",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"display_name": "New Name",
+								"bio": "New bio",
+								"timezone": "Europe/Budapest"
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"users",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Avatar",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "avatar",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/users/profile/avatar",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"users",
+								"profile",
+								"avatar"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Challenges",
+			"item": [
+				{
+					"name": "Create Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"title": "My New Challenge",
+								"description": "Challenge description",
+								"start_date": "2026-05-01T00:00:00Z",
+								"end_date": "2026-05-31T23:59:59Z",
+								"type": "steps",
+								"goal": 100000,
+								"max_participants": 100
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Challenges",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "active",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Publish Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/publish",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"publish"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Cover Image",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/image",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"image"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Join Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/join",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"join"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Leave Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/leave",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"leave"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Prizes",
+			"item": [
+				{
+					"name": "Get Prizes",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/prizes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"prizes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Prize",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"title": "Gold Medal",
+								"description": "Top performer prize",
+								"rank_required": 1
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/prizes",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"prizes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Prize",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "json",
+							"json": {
+								"title": "Super Gold Medal",
+								"description": "Very top performer prize",
+								"rank_required": 1
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/prizes/{{prizeId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"prizes",
+								"{{prizeId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Prize",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/challenges/{{challengeId}}/prizes/{{prizeId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"challenges",
+								"{{challengeId}}",
+								"prizes",
+								"{{prizeId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refreshToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "challengeId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "prizeId",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
