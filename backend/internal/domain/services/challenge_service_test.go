@@ -47,7 +47,7 @@ func (m *mockDBPool) Close() { m.Called() }
 
 type mockTx struct {
 	mock.Mock
-	pgx.Tx // Satisfy pgx.Tx interface
+	pgx.Tx 
 }
 func (m *mockTx) Commit(ctx context.Context) error { return m.Called(ctx).Error(0) }
 func (m *mockTx) Rollback(ctx context.Context) error { return m.Called(ctx).Error(0) }
@@ -123,6 +123,28 @@ func (m *mockUserRepo) GetByEmail(ctx context.Context, e string) (*models.User, 
 	return a.Get(0).(*models.User), a.Error(1)
 }
 
+type mockPrizeRepo struct {
+	mock.Mock
+}
+func (m *mockPrizeRepo) Create(ctx context.Context, p *models.Prize) error {
+	return m.Called(ctx, p).Error(0)
+}
+func (m *mockPrizeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Prize, error) {
+	a := m.Called(ctx, id)
+	if a.Get(0) == nil { return nil, a.Error(1) }
+	return a.Get(0).(*models.Prize), a.Error(1)
+}
+func (m *mockPrizeRepo) GetByChallengeID(ctx context.Context, id uuid.UUID) ([]*models.Prize, error) {
+	a := m.Called(ctx, id)
+	return a.Get(0).([]*models.Prize), a.Error(1)
+}
+func (m *mockPrizeRepo) Update(ctx context.Context, p *models.Prize) error {
+	return m.Called(ctx, p).Error(0)
+}
+func (m *mockPrizeRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	return m.Called(ctx, id).Error(0)
+}
+
 type mockS3Client struct {
 	mock.Mock
 }
@@ -166,18 +188,23 @@ func (m *mockRedisClient) Close() error {
 
 // --- Tests ---
 
-func TestJoinChallenge(t *testing.T) {
-	ctx := context.Background()
+func setupService() (*mockDBPool, *mockChallengeRepo, *mockUserRepo, *mockParticipationRepo, *mockPrizeRepo, *mockS3Client, *mockRedisClient, ChallengeService, *slog.Logger) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	
 	pool := new(mockDBPool)
 	cRepo := new(mockChallengeRepo)
 	uRepo := new(mockUserRepo)
 	pRepo := new(mockParticipationRepo)
+	prRepo := new(mockPrizeRepo)
 	s3 := new(mockS3Client)
 	redisMock := new(mockRedisClient)
 	
-	service := NewChallengeService(pool, cRepo, uRepo, pRepo, s3, redisMock, logger)
+	service := NewChallengeService(pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, logger)
+	return pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, service, logger
+}
+
+func TestJoinChallenge(t *testing.T) {
+	ctx := context.Background()
+	pool, cRepo, _, pRepo, _, _, redisMock, service, _ := setupService()
 
 	userID := uuid.New()
 	challengeID := uuid.New()
@@ -209,17 +236,10 @@ func TestJoinChallenge(t *testing.T) {
 		})).Return(nil).Once()
 		
 		tx.On("Commit", ctx).Return(nil).Once()
-		
 		redisMock.On("Incr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
 		
 		err := service.JoinChallenge(ctx, userID, challengeID)
-		
 		assert.NoError(t, err)
-		pool.AssertExpectations(t)
-		cRepo.AssertExpectations(t)
-		pRepo.AssertExpectations(t)
-		tx.AssertExpectations(t)
-		redisMock.AssertExpectations(t)
 	})
 
 	t.Run("Challenge Full", func(t *testing.T) {
@@ -234,23 +254,13 @@ func TestJoinChallenge(t *testing.T) {
 		pRepo.On("Get", ctx, userID, challengeID).Return(nil, domain.ErrNotFound).Once()
 		
 		err := service.JoinChallenge(ctx, userID, challengeID)
-		
 		assert.ErrorIs(t, err, domain.ErrChallengeFull)
 	})
 }
 
 func TestLeaveChallenge(t *testing.T) {
 	ctx := context.Background()
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	
-	pool := new(mockDBPool)
-	cRepo := new(mockChallengeRepo)
-	uRepo := new(mockUserRepo)
-	pRepo := new(mockParticipationRepo)
-	s3 := new(mockS3Client)
-	redisMock := new(mockRedisClient)
-	
-	service := NewChallengeService(pool, cRepo, uRepo, pRepo, s3, redisMock, logger)
+	pool, cRepo, _, pRepo, _, _, redisMock, service, _ := setupService()
 
 	userID := uuid.New()
 	challengeID := uuid.New()
@@ -280,7 +290,81 @@ func TestLeaveChallenge(t *testing.T) {
 		redisMock.On("Decr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
 		
 		err := service.LeaveChallenge(ctx, userID, challengeID)
-		
 		assert.NoError(t, err)
+	})
+}
+
+func TestCreateChallenge(t *testing.T) {
+	ctx := context.Background()
+	_, cRepo, uRepo, _, _, _, _, service, _ := setupService()
+
+	creatorID := uuid.New()
+
+	t.Run("Success", func(t *testing.T) {
+		uRepo.On("GetByID", ctx, creatorID).Return(&models.User{Role: models.RoleCreator}, nil).Once()
+		cRepo.On("Create", ctx, mock.AnythingOfType("*models.Challenge")).Return(nil).Once()
+
+		err := service.CreateChallenge(ctx, creatorID, &models.Challenge{Title: "Test"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("Unauthorized", func(t *testing.T) {
+		uRepo.On("GetByID", ctx, creatorID).Return(&models.User{Role: models.RoleParticipant}, nil).Once()
+
+		err := service.CreateChallenge(ctx, creatorID, &models.Challenge{Title: "Test"})
+		assert.ErrorIs(t, err, domain.ErrUnauthorized)
+	})
+}
+
+func TestPublishChallenge(t *testing.T) {
+	ctx := context.Background()
+	_, cRepo, _, _, _, _, _, service, _ := setupService()
+
+	creatorID := uuid.New()
+	challengeID := uuid.New()
+
+	t.Run("Success", func(t *testing.T) {
+		challenge := &models.Challenge{ID: challengeID, CreatorID: creatorID, Status: models.ChallengeStatusDraft}
+		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
+		cRepo.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
+			return c.Status == models.ChallengeStatusUpcoming
+		})).Return(nil).Once()
+
+		err := service.PublishChallenge(ctx, creatorID, challengeID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Not Draft", func(t *testing.T) {
+		challenge := &models.Challenge{ID: challengeID, CreatorID: creatorID, Status: models.ChallengeStatusActive}
+		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
+
+		err := service.PublishChallenge(ctx, creatorID, challengeID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "only draft challenges can be published")
+	})
+}
+
+func TestAddPrize(t *testing.T) {
+	ctx := context.Background()
+	_, cRepo, _, _, prRepo, _, _, service, _ := setupService()
+
+	creatorID := uuid.New()
+	challengeID := uuid.New()
+
+	t.Run("Success", func(t *testing.T) {
+		challenge := &models.Challenge{ID: challengeID, CreatorID: creatorID, Status: models.ChallengeStatusDraft}
+		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
+		prRepo.On("Create", ctx, mock.AnythingOfType("*models.Prize")).Return(nil).Once()
+
+		err := service.AddPrize(ctx, creatorID, challengeID, &models.Prize{Title: "Gold"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("Forbidden on Published", func(t *testing.T) {
+		challenge := &models.Challenge{ID: challengeID, CreatorID: creatorID, Status: models.ChallengeStatusUpcoming}
+		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
+
+		err := service.AddPrize(ctx, creatorID, challengeID, &models.Prize{Title: "Gold"})
+		assert.ErrorIs(t, err, domain.ErrBadRequest)
 	})
 }

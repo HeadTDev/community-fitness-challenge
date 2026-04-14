@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 20 (Seed & Documentation)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 21 (Refactoring & Unit Tests)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -418,6 +418,22 @@ if [ $RL_TRIGGERED -eq 1 ]; then
     report_status "Rate Limiting: Sliding Window (429)" "PASS"
 else
     report_status "Rate Limiting: Sliding Window (429)" "FAIL"
+fi
+
+# --- Phase 15: Code Refactoring Verification ---
+print_section "Phase 15: Code Refactoring & Unit Tests (Day 21)"
+
+if [ -f "/app/backend/internal/app/app.go" ]; then
+    report_status "DI: Application Container (app.go)" "PASS"
+else
+    report_status "DI: Application Container (app.go)" "FAIL"
+fi
+
+# Use grep to check if main.go is using the new app package
+if grep -q "internal/app" "/app/backend/cmd/api/main.go"; then
+    report_status "DI: Main uses App Container" "PASS"
+else
+    report_status "DI: Main uses App Container" "FAIL"
 fi
 
 # --- Summary ---

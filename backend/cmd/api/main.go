@@ -10,15 +10,8 @@ import (
 	"time"
 	"log/slog"
 
-	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
-	"github.com/HeadTDev/fitchallenge/internal/adapter/redis"
-	"github.com/HeadTDev/fitchallenge/internal/aws"
+	"github.com/HeadTDev/fitchallenge/internal/app"
 	"github.com/HeadTDev/fitchallenge/internal/config"
-	"github.com/HeadTDev/fitchallenge/internal/domain/services"
-	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
-	"github.com/HeadTDev/fitchallenge/internal/handler/http/middleware"
-	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
-	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -29,105 +22,25 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	// 3. Initialize Connections (DB & Redis)
+	// 3. Setup context for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dbPool, err := postgres.NewConnection(ctx, cfg)
+	// 4. Initialize the whole application tree (DI)
+	router, cleanup, err := app.NewRouter(cfg, logger, ctx)
 	if err != nil {
-		slog.Error("Failed to connect to database", "error", err)
+		slog.Error("Failed to initialize application", "error", err)
 		os.Exit(1)
 	}
-
-	redisClient, err := redis.NewRedisClient(ctx, cfg)
-	if err != nil {
-		slog.Error("Failed to connect to redis", "error", err)
-		os.Exit(1)
-	}
-
-	// 4. Initialize JWT & AWS Clients
-	jwtManager := jwt.NewJWTManager(cfg.JWT.Secret, 15*time.Minute, 7*24*time.Hour)
-	
-	awsCfg, err := aws.NewAWSConfig(ctx, cfg)
-	if err != nil {
-		slog.Error("Failed to initialize AWS config", "error", err)
-		os.Exit(1)
-	}
-	s3Client := aws.NewS3Client(awsCfg, cfg.S3PublicURL)
-
-	// 5. Initialize Repositories
-	userRepo := postgres.NewUserRepo(dbPool)
-	challengeRepo := postgres.NewChallengeRepo(dbPool)
-	participationRepo := postgres.NewParticipationRepo(dbPool)
-	prizeRepo := postgres.NewPrizeRepo(dbPool)
-
-	// 6. Initialize Services
-	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, logger)
-
-	// 7. Initialize Gin router
-	if cfg.App.Env == "production" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	
-	r := gin.New()
-	
-	// Use custom middlewares
-	r.Use(middleware.RequestIDMiddleware())
-	r.Use(middleware.LoggerMiddleware())
-	r.Use(middleware.GlobalRateLimit(redisClient))
-	r.Use(gin.Recovery())
-
-	// Initialize handlers
-	healthHandler := handler.NewHealthHandler(dbPool)
-	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
-	userHandler := handler.NewUserHandler(userRepo, s3Client)
-	challengeHandler := handler.NewChallengeHandler(challengeService)
-
-	// Basic health routes
-	r.GET("/healthz", healthHandler.Healthz)
-	r.GET("/readyz", healthHandler.Readyz)
-
-	// Auth routes
-	auth := r.Group("/auth")
-	{
-		auth.POST("/register-dev", authHandler.RegisterDev)
-		auth.POST("/refresh", authHandler.RefreshToken)
-	}
-
-	// Protected v1 routes
-	v1 := r.Group("/v1")
-	v1.Use(middleware.AuthMiddleware(jwtManager))
-	{
-		v1.GET("/users/me", userHandler.MeHandler)
-		v1.GET("/users/profile", userHandler.GetProfile)
-		v1.PUT("/users/profile", userHandler.UpdateProfile)
-		v1.POST("/users/profile/avatar", userHandler.UploadAvatar)
-		
-		// Challenge routes
-		v1.POST("/challenges", challengeHandler.CreateChallenge)
-		v1.GET("/challenges", challengeHandler.ListChallenges)
-		v1.GET("/challenges/:id", challengeHandler.GetChallenge)
-		v1.POST("/challenges/:id/publish", challengeHandler.PublishChallenge)
-		v1.POST("/challenges/:id/image", challengeHandler.UploadCoverImage)
-		v1.POST("/challenges/:id/join", challengeHandler.JoinChallenge)
-		v1.POST("/challenges/:id/leave", challengeHandler.LeaveChallenge)
-
-		// Prize routes
-		v1.GET("/challenges/:id/prizes", challengeHandler.GetPrizes)
-		v1.POST("/challenges/:id/prizes", challengeHandler.AddPrize)
-		v1.PUT("/challenges/:id/prizes/:prize_id", challengeHandler.UpdatePrize)
-		v1.DELETE("/challenges/:id/prizes/:prize_id", challengeHandler.DeletePrize)
-
-		v1.GET("/aws-status", healthHandler.AWSStatus)
-	}
+	defer cleanup()
 
 	// 5. Configure HTTP Server
 	srv := &http.Server{
 		Addr:    ":" + cfg.App.Port,
-		Handler: r,
+		Handler: router,
 	}
 
-	// 5. Start server in a goroutine
+	// 6. Start server in a goroutine
 	go func() {
 		log.Printf("🚀 API Server starting on port %s", cfg.App.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -135,7 +48,7 @@ func main() {
 		}
 	}()
 
-	// 6. Wait for interrupt signal for graceful shutdown
+	// 7. Wait for interrupt signal for graceful shutdown
 	<-ctx.Done()
 
 	log.Println("⚠️  Shutting down server gracefully...")
@@ -147,10 +60,6 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("❌ Server forced to shutdown: %v", err)
 	}
-
-	// 7. Close resources after server is stopped
-	dbPool.Close()
-	redisClient.Close()
 
 	log.Println("✅ Server stopped cleanly")
 }
