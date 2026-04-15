@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 21 (Refactoring & Unit Tests)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 22 (Daily Log Migration + Repo)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -434,6 +434,63 @@ if grep -q "internal/app" "/app/backend/cmd/api/main.go"; then
     report_status "DI: Main uses App Container" "PASS"
 else
     report_status "DI: Main uses App Container" "FAIL"
+fi
+
+# --- Phase 16: Daily Log Migration + Repository Foundation ---
+print_section "Phase 16: Daily Log Migration + Repository Foundation (Day 22)"
+
+DAILY_TABLE=$(psql "$DB_CONN" -t -c "SELECT to_regclass('public.daily_logs');" | xargs || true)
+if [[ -n "$DAILY_TABLE" ]]; then
+    report_status "DailyLog Schema: Table exists (daily_logs)" "PASS"
+    
+    DAILY_UNIQUE=$(psql "$DB_CONN" -t -c "SELECT 1 FROM pg_constraint WHERE conrelid='daily_logs'::regclass AND contype='u' AND pg_get_constraintdef(oid) LIKE '%user_id, challenge_id, log_date%' LIMIT 1;" | xargs || true)
+    if [[ "$DAILY_UNIQUE" == "1" ]]; then
+        report_status "DailyLog Constraint: UNIQUE(user,challenge,date)" "PASS"
+    else
+        report_status "DailyLog Constraint: UNIQUE(user,challenge,date)" "FAIL"
+    fi
+
+    DAILY_CHECK_COUNT=$(psql "$DB_CONN" -t -c "SELECT count(*) FROM pg_constraint WHERE conrelid='daily_logs'::regclass AND contype='c';" | xargs || true)
+    if [[ -n "$DAILY_CHECK_COUNT" && "$DAILY_CHECK_COUNT" -ge 5 ]]; then
+        report_status "DailyLog Constraint: CHECK guards present" "PASS" "Count: $DAILY_CHECK_COUNT"
+    else
+        report_status "DailyLog Constraint: CHECK guards present" "FAIL" "Count: ${DAILY_CHECK_COUNT:-0}"
+    fi
+
+    DL_USER_ID=$(psql "$DB_CONN" -t -c "SELECT id FROM users LIMIT 1;" | xargs || true)
+    DL_CHALLENGE_ID=$(psql "$DB_CONN" -t -c "SELECT id FROM challenges LIMIT 1;" | xargs || true)
+    DL_DATE=$(date -u +"%Y-%m-%d")
+
+    if [[ -n "$DL_USER_ID" && -n "$DL_CHALLENGE_ID" ]]; then
+        psql "$DB_CONN" -c "DELETE FROM daily_logs WHERE user_id='$DL_USER_ID' AND challenge_id='$DL_CHALLENGE_ID' AND log_date='$DL_DATE';" > /dev/null || true
+
+        if psql "$DB_CONN" -v ON_ERROR_STOP=1 -q -c "INSERT INTO daily_logs (id, user_id, challenge_id, log_date, steps, calories, active_minutes, score) VALUES (gen_random_uuid(), '$DL_USER_ID', '$DL_CHALLENGE_ID', '$DL_DATE', 12000, 650, 45, 72.50);" > /dev/null 2>&1; then
+            report_status "DailyLog Repo: First insert succeeds" "PASS"
+        else
+            report_status "DailyLog Repo: First insert succeeds" "FAIL"
+        fi
+
+        if psql "$DB_CONN" -v ON_ERROR_STOP=1 -q -c "INSERT INTO daily_logs (id, user_id, challenge_id, log_date, steps, calories, active_minutes, score) VALUES (gen_random_uuid(), '$DL_USER_ID', '$DL_CHALLENGE_ID', '$DL_DATE', 5000, 200, 15, 20);" > /dev/null 2>&1; then
+            report_status "DailyLog Repo: Duplicate same day rejected" "FAIL"
+        else
+            report_status "DailyLog Repo: Duplicate same day rejected" "PASS"
+        fi
+
+        if psql "$DB_CONN" -v ON_ERROR_STOP=1 -q -c "INSERT INTO daily_logs (id, user_id, challenge_id, log_date, steps, calories, active_minutes, score) VALUES (gen_random_uuid(), '$DL_USER_ID', '$DL_CHALLENGE_ID', ('$DL_DATE'::date + 1), -1, 200, 15, 10);" > /dev/null 2>&1; then
+            report_status "DailyLog Repo: Negative metric rejected" "FAIL"
+        else
+            report_status "DailyLog Repo: Negative metric rejected" "PASS"
+        fi
+    else
+        report_status "DailyLog Repo: Test setup (user + challenge)" "FAIL" "Missing seed records"
+    fi
+else
+    report_status "DailyLog Schema: Table exists (daily_logs)" "FAIL"
+    report_status "DailyLog Constraint: UNIQUE(user,challenge,date)" "FAIL"
+    report_status "DailyLog Constraint: CHECK guards present" "FAIL"
+    report_status "DailyLog Repo: First insert succeeds" "FAIL"
+    report_status "DailyLog Repo: Duplicate same day rejected" "FAIL"
+    report_status "DailyLog Repo: Negative metric rejected" "FAIL"
 fi
 
 # --- Summary ---
