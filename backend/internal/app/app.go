@@ -131,6 +131,7 @@ func RegisterRoutes(
 		v1.POST("/challenges/:id/leave", challenge.LeaveChallenge)
 		v1.POST("/challenges/:id/logs", challenge.SubmitDailyLog)
 		v1.GET("/challenges/:id/logs", challenge.GetDailyLogs)
+		v1.GET("/challenges/:id/my-progress", challenge.GetMyProgress)
 
 		// Prize routes
 		v1.GET("/challenges/:id/prizes", challenge.GetPrizes)

@@ -42,6 +42,24 @@ type DailyLogListResponse struct {
 	Aggregation DailyLogAggregation `json:"aggregation"`
 }
 
+type RelativeToCreator struct {
+	CreatorScore float64 `json:"creator_score"`
+	MyScore      float64 `json:"my_score"`
+	Percentage   float64 `json:"percentage"`
+}
+
+type CreatorStats struct {
+	CreatorID uuid.UUID `json:"creator_id"`
+	Score     float64   `json:"score"`
+}
+
+type MyProgressResponse struct {
+	ChallengeID       uuid.UUID           `json:"challenge_id"`
+	Aggregation       DailyLogAggregation `json:"aggregation"`
+	CreatorStats      CreatorStats        `json:"creator_stats"`
+	RelativeToCreator RelativeToCreator   `json:"relative_to_creator"`
+}
+
 func (d *DailyLog) ToResponse() DailyLogResponse {
 	return DailyLogResponse{
 		ID:            d.ID,

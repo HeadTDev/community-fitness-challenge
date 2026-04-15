@@ -38,6 +38,7 @@ type SubmitDailyLogInput struct {
 type LogService interface {
 	SubmitDailyLog(ctx context.Context, userID, challengeID uuid.UUID, input SubmitDailyLogInput) (*models.DailyLog, error)
 	GetDailyLogsWithAggregation(ctx context.Context, userID, challengeID uuid.UUID) (*models.DailyLogListResponse, error)
+	GetMyProgress(ctx context.Context, userID, challengeID uuid.UUID) (*models.MyProgressResponse, error)
 }
 
 type logService struct {
@@ -190,6 +191,54 @@ func (s *logService) GetDailyLogsWithAggregation(ctx context.Context, userID, ch
 	return &models.DailyLogListResponse{
 		Logs:        responses,
 		Aggregation: calculateDailyLogAggregation(logs),
+	}, nil
+}
+
+func (s *logService) GetMyProgress(ctx context.Context, userID, challengeID uuid.UUID) (*models.MyProgressResponse, error) {
+	if userID == uuid.Nil || challengeID == uuid.Nil {
+		return nil, fmt.Errorf("missing user or challenge id: %w", domain.ErrInvalidInput)
+	}
+
+	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.participationRepo.Get(ctx, userID, challengeID); err != nil {
+		return nil, err
+	}
+
+	myLogs, err := s.dailyLogRepo.ListByUserAndChallenge(ctx, userID, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	myAgg := calculateDailyLogAggregation(myLogs)
+
+	creatorScore := 0.0
+	creatorLogs, err := s.dailyLogRepo.ListByUserAndChallenge(ctx, challenge.CreatorID, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	if len(creatorLogs) > 0 {
+		creatorScore = calculateDailyLogAggregation(creatorLogs).TotalScore
+	}
+
+	percentage := 0.0
+	if creatorScore > 0 {
+		percentage = round2((myAgg.TotalScore / creatorScore) * 100)
+	}
+
+	return &models.MyProgressResponse{
+		ChallengeID: challengeID,
+		Aggregation: myAgg,
+		CreatorStats: models.CreatorStats{
+			CreatorID: challenge.CreatorID,
+			Score:     creatorScore,
+		},
+		RelativeToCreator: models.RelativeToCreator{
+			CreatorScore: creatorScore,
+			MyScore:      myAgg.TotalScore,
+			Percentage:   percentage,
+		},
 	}, nil
 }
 

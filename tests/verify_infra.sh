@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 25 (Log API + Aggregation)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 26 (My Progress + Creator Stats)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -654,8 +654,66 @@ else
     report_status "Log API: total_score aggregation" "FAIL"
 fi
 
-# --- Phase 20: Security Hardening (STRESS TEST) ---
-print_section "Phase 20: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 20: My Progress + Creator Stats ---
+print_section "Phase 20: My Progress + Creator Stats (Day 26)"
+
+PG26_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+PG26_END=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+PG26_DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+PG26_TS=$(date +%s)
+
+PG26_CHALLENGE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Progress Test Challenge '"$PG26_TS"'",
+        "description": "My progress verification",
+        "start_date": "'"$PG26_START"'",
+        "end_date": "'"$PG26_END"'",
+        "type": "mixed",
+        "goal": 1000
+    }' "$API_URL/v1/challenges")
+PG26_CHALLENGE_ID=$(echo "$PG26_CHALLENGE" | jq -r '.data.id')
+
+if [[ "$PG26_CHALLENGE_ID" != "null" ]] && [[ -n "$PG26_CHALLENGE_ID" ]]; then
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/publish" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/join" > /dev/null
+
+    # Creator log: 72.50
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$PG26_DATE"'",
+            "steps": 12000,
+            "calories": 650,
+            "active_minutes": 45
+        }' "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/logs" > /dev/null
+
+    # Participant with same score -> expected percentage = 100
+    TOKEN3=$(curl -s -X POST "$API_URL/auth/register-dev" | jq -r '.data.access_token')
+    curl -s -X POST -H "Authorization: Bearer $TOKEN3" "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/join" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN3" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$PG26_DATE"'",
+            "steps": 12000,
+            "calories": 650,
+            "active_minutes": 45
+        }' "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/logs" > /dev/null
+
+    PG26_PROGRESS=$(curl -s -H "Authorization: Bearer $TOKEN3" "$API_URL/v1/challenges/$PG26_CHALLENGE_ID/my-progress")
+    PG26_PERCENT=$(echo "$PG26_PROGRESS" | jq -r '.data.relative_to_creator.percentage // -1')
+    if [[ "$PG26_PERCENT" == "100" ]] || [[ "$PG26_PERCENT" == "100.0" ]] || [[ "$PG26_PERCENT" == "100.00" ]]; then
+        report_status "My Progress: relative_to_creator.percentage" "PASS"
+    else
+        report_status "My Progress: relative_to_creator.percentage" "FAIL" "percentage: $PG26_PERCENT"
+    fi
+else
+    report_status "My Progress: setup challenge created" "FAIL" "Resp: $PG26_CHALLENGE"
+    report_status "My Progress: relative_to_creator.percentage" "FAIL"
+fi
+
+# --- Phase 21: Security Hardening (STRESS TEST) ---
+print_section "Phase 21: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0
