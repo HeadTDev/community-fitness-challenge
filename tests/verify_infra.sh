@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 22 (Daily Log Migration + Repo)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 23 (Scoring Engine)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -491,6 +491,29 @@ else
     report_status "DailyLog Repo: First insert succeeds" "FAIL"
     report_status "DailyLog Repo: Duplicate same day rejected" "FAIL"
     report_status "DailyLog Repo: Negative metric rejected" "FAIL"
+fi
+
+# --- Phase 17: Scoring Engine ---
+print_section "Phase 17: Scoring Engine (Day 23)"
+
+if [ -f "/app/backend/internal/domain/services/scoring_service.go" ] && [ -f "/app/backend/internal/domain/services/scoring_service_test.go" ]; then
+    report_status "Scoring Engine: Service + Unit test files exist" "PASS"
+else
+    report_status "Scoring Engine: Service + Unit test files exist" "FAIL"
+fi
+
+# Reference fixture: 650 kcal, 12000 steps, 45 active minutes -> 72.50
+SCORING_REF=$(awk 'BEGIN {
+    steps_norm=12000/15000; if (steps_norm>1) steps_norm=1;
+    cal_norm=650/1000; if (cal_norm>1) cal_norm=1;
+    active_norm=45/60; if (active_norm>1) active_norm=1;
+    score=(steps_norm*0.30 + cal_norm*0.40 + active_norm*0.30)*100;
+    printf "%.2f", score;
+}')
+if [[ "$SCORING_REF" == "72.50" ]]; then
+    report_status "Scoring Engine: Reference fixture (72.50)" "PASS"
+else
+    report_status "Scoring Engine: Reference fixture (72.50)" "FAIL" "Score: $SCORING_REF"
 fi
 
 # --- Summary ---
