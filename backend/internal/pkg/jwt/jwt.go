@@ -13,21 +13,27 @@ var (
 	ErrExpiredToken = errors.New("token has expired")
 )
 
+const (
+	TokenUseAccess  = "access"
+	TokenUseRefresh = "refresh"
+)
+
 type Claims struct {
-	UserID string `json:"user_id"`
-	Role   string `json:"role"`
+	UserID   string `json:"user_id"`
+	Role     string `json:"role"`
+	TokenUse string `json:"token_use"`
 	jwt.RegisteredClaims
 }
 
 type JWTManager struct {
-	secretKey     string
+	secretKey       string
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
 }
 
 func NewJWTManager(secretKey string, accessTTL, refreshTTL time.Duration) *JWTManager {
 	return &JWTManager{
-		secretKey:     secretKey,
+		secretKey:       secretKey,
 		accessTokenTTL:  accessTTL,
 		refreshTokenTTL: refreshTTL,
 	}
@@ -36,8 +42,9 @@ func NewJWTManager(secretKey string, accessTTL, refreshTTL time.Duration) *JWTMa
 // GenerateAccessToken létrehoz egy rövid lejáratú hozzáférési tokent.
 func (m *JWTManager) GenerateAccessToken(userID, role string) (string, error) {
 	claims := Claims{
-		UserID: userID,
-		Role:   role,
+		UserID:   userID,
+		Role:     role,
+		TokenUse: TokenUseAccess,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.accessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -51,7 +58,8 @@ func (m *JWTManager) GenerateAccessToken(userID, role string) (string, error) {
 // GenerateRefreshToken létrehoz egy hosszú lejáratú frissítési tokent.
 func (m *JWTManager) GenerateRefreshToken(userID string) (string, error) {
 	claims := Claims{
-		UserID: userID,
+		UserID:   userID,
+		TokenUse: TokenUseRefresh,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.refreshTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

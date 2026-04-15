@@ -33,6 +33,11 @@ func AuthMiddleware(jwtManager *jwt.JWTManager) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if claims.TokenUse != jwt.TokenUseAccess {
+			response.Error(c, http.StatusUnauthorized, "INVALID_TOKEN_TYPE", "Access token required")
+			c.Abort()
+			return
+		}
 
 		// Elmentjük a claim-eket a kontextusba a későbbi használathoz
 		c.Set(UserIDKey, claims.UserID)

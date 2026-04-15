@@ -3,20 +3,20 @@ package services
 import (
 	"context"
 	"io"
-	"testing"
-	"time"
 	"log/slog"
 	"os"
+	"testing"
+	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // --- Mocks ---
@@ -24,6 +24,7 @@ import (
 type mockDBPool struct {
 	mock.Mock
 }
+
 func (m *mockDBPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	a := m.Called(ctx, sql, args)
 	return a.Get(0).(pgconn.CommandTag), a.Error(1)
@@ -47,20 +48,31 @@ func (m *mockDBPool) Close() { m.Called() }
 
 type mockTx struct {
 	mock.Mock
-	pgx.Tx 
+	pgx.Tx
 }
-func (m *mockTx) Commit(ctx context.Context) error { return m.Called(ctx).Error(0) }
+
+func (m *mockTx) Commit(ctx context.Context) error   { return m.Called(ctx).Error(0) }
 func (m *mockTx) Rollback(ctx context.Context) error { return m.Called(ctx).Error(0) }
 
 type mockChallengeRepo struct {
 	mock.Mock
 }
+
 func (m *mockChallengeRepo) Create(ctx context.Context, c *models.Challenge) error {
 	return m.Called(ctx, c).Error(0)
 }
 func (m *mockChallengeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Challenge, error) {
 	a := m.Called(ctx, id)
-	if a.Get(0) == nil { return nil, a.Error(1) }
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
+	}
+	return a.Get(0).(*models.Challenge), a.Error(1)
+}
+func (m *mockChallengeRepo) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Challenge, error) {
+	a := m.Called(ctx, id)
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
+	}
 	return a.Get(0).(*models.Challenge), a.Error(1)
 }
 func (m *mockChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
@@ -80,6 +92,7 @@ func (m *mockChallengeRepo) WithTx(tx interface{}) repositories.ChallengeReposit
 type mockParticipationRepo struct {
 	mock.Mock
 }
+
 func (m *mockParticipationRepo) Add(ctx context.Context, p *models.Participation) error {
 	return m.Called(ctx, p).Error(0)
 }
@@ -88,7 +101,9 @@ func (m *mockParticipationRepo) Remove(ctx context.Context, u, c uuid.UUID) erro
 }
 func (m *mockParticipationRepo) Get(ctx context.Context, u, c uuid.UUID) (*models.Participation, error) {
 	a := m.Called(ctx, u, c)
-	if a.Get(0) == nil { return nil, a.Error(1) }
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
+	}
 	return a.Get(0).(*models.Participation), a.Error(1)
 }
 func (m *mockParticipationRepo) GetParticipantsCount(ctx context.Context, c uuid.UUID) (int, error) {
@@ -106,14 +121,23 @@ func (m *mockParticipationRepo) WithTx(tx interface{}) repositories.Participatio
 type mockUserRepo struct {
 	mock.Mock
 }
+
 func (m *mockUserRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	a := m.Called(ctx, id)
-	if a.Get(0) == nil { return nil, a.Error(1) }
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
+	}
 	return a.Get(0).(*models.User), a.Error(1)
 }
-func (m *mockUserRepo) Create(ctx context.Context, u *models.User) error { return m.Called(ctx, u).Error(0) }
-func (m *mockUserRepo) Update(ctx context.Context, u *models.User) error { return m.Called(ctx, u).Error(0) }
-func (m *mockUserRepo) Delete(ctx context.Context, id uuid.UUID) error { return m.Called(ctx, id).Error(0) }
+func (m *mockUserRepo) Create(ctx context.Context, u *models.User) error {
+	return m.Called(ctx, u).Error(0)
+}
+func (m *mockUserRepo) Update(ctx context.Context, u *models.User) error {
+	return m.Called(ctx, u).Error(0)
+}
+func (m *mockUserRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	return m.Called(ctx, id).Error(0)
+}
 func (m *mockUserRepo) GetByAppleID(ctx context.Context, id string) (*models.User, error) {
 	a := m.Called(ctx, id)
 	return a.Get(0).(*models.User), a.Error(1)
@@ -126,12 +150,15 @@ func (m *mockUserRepo) GetByEmail(ctx context.Context, e string) (*models.User, 
 type mockPrizeRepo struct {
 	mock.Mock
 }
+
 func (m *mockPrizeRepo) Create(ctx context.Context, p *models.Prize) error {
 	return m.Called(ctx, p).Error(0)
 }
 func (m *mockPrizeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Prize, error) {
 	a := m.Called(ctx, id)
-	if a.Get(0) == nil { return nil, a.Error(1) }
+	if a.Get(0) == nil {
+		return nil, a.Error(1)
+	}
 	return a.Get(0).(*models.Prize), a.Error(1)
 }
 func (m *mockPrizeRepo) GetByChallengeID(ctx context.Context, id uuid.UUID) ([]*models.Prize, error) {
@@ -148,6 +175,7 @@ func (m *mockPrizeRepo) Delete(ctx context.Context, id uuid.UUID) error {
 type mockS3Client struct {
 	mock.Mock
 }
+
 func (m *mockS3Client) UploadFile(ctx context.Context, b, k string, r io.Reader, t string) (string, error) {
 	a := m.Called(ctx, b, k, r, t)
 	return a.String(0), a.Error(1)
@@ -164,6 +192,7 @@ func (m *mockS3Client) DeleteFile(ctx context.Context, b, k string) error {
 type mockRedisClient struct {
 	mock.Mock
 }
+
 func (m *mockRedisClient) Get(ctx context.Context, key string) *redis.StringCmd {
 	return m.Called(ctx, key).Get(0).(*redis.StringCmd)
 }
@@ -197,7 +226,7 @@ func setupService() (*mockDBPool, *mockChallengeRepo, *mockUserRepo, *mockPartic
 	prRepo := new(mockPrizeRepo)
 	s3 := new(mockS3Client)
 	redisMock := new(mockRedisClient)
-	
+
 	service := NewChallengeService(pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, logger)
 	return pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, service, logger
 }
@@ -211,48 +240,58 @@ func TestJoinChallenge(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		challenge := &models.Challenge{
-			ID: challengeID,
-			Status: models.ChallengeStatusUpcoming,
-			MaxParticipants: 10,
+			ID:               challengeID,
+			Status:           models.ChallengeStatusUpcoming,
+			MaxParticipants:  10,
 			ParticipantCount: 5,
 		}
-		
-		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
-		pRepo.On("Get", ctx, userID, challengeID).Return(nil, domain.ErrNotFound).Once()
-		
+
 		tx := new(mockTx)
 		pool.On("Begin", ctx).Return(tx, nil).Once()
 		tx.On("Rollback", ctx).Return(nil).Maybe()
-		
+
 		cRepoTx := new(mockChallengeRepo)
 		pRepoTx := new(mockParticipationRepo)
 		cRepo.On("WithTx", tx).Return(cRepoTx).Once()
 		pRepo.On("WithTx", tx).Return(pRepoTx).Once()
-		
+
+		cRepoTx.On("GetByIDForUpdate", ctx, challengeID).Return(challenge, nil).Once()
+		pRepoTx.On("Get", ctx, userID, challengeID).Return(nil, domain.ErrNotFound).Once()
+		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(5, nil).Once()
 		pRepoTx.On("Add", ctx, mock.AnythingOfType("*models.Participation")).Return(nil).Once()
 		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(6, nil).Once()
 		cRepoTx.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
 			return c.ParticipantCount == 6
 		})).Return(nil).Once()
-		
+
 		tx.On("Commit", ctx).Return(nil).Once()
 		redisMock.On("Incr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
-		
+
 		err := service.JoinChallenge(ctx, userID, challengeID)
 		assert.NoError(t, err)
 	})
 
 	t.Run("Challenge Full", func(t *testing.T) {
 		challenge := &models.Challenge{
-			ID: challengeID,
-			Status: models.ChallengeStatusUpcoming,
-			MaxParticipants: 5,
+			ID:               challengeID,
+			Status:           models.ChallengeStatusUpcoming,
+			MaxParticipants:  5,
 			ParticipantCount: 5,
 		}
-		
-		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
-		pRepo.On("Get", ctx, userID, challengeID).Return(nil, domain.ErrNotFound).Once()
-		
+
+		tx := new(mockTx)
+		pool.On("Begin", ctx).Return(tx, nil).Once()
+		tx.On("Rollback", ctx).Return(nil).Maybe()
+
+		cRepoTx := new(mockChallengeRepo)
+		pRepoTx := new(mockParticipationRepo)
+		cRepo.On("WithTx", tx).Return(cRepoTx).Once()
+		pRepo.On("WithTx", tx).Return(pRepoTx).Once()
+
+		cRepoTx.On("GetByIDForUpdate", ctx, challengeID).Return(challenge, nil).Once()
+		pRepoTx.On("Get", ctx, userID, challengeID).Return(nil, domain.ErrNotFound).Once()
+		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(5, nil).Once()
+
 		err := service.JoinChallenge(ctx, userID, challengeID)
 		assert.ErrorIs(t, err, domain.ErrChallengeFull)
 	})
@@ -267,28 +306,28 @@ func TestLeaveChallenge(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		pRepo.On("Get", ctx, userID, challengeID).Return(&models.Participation{}, nil).Once()
-		
+
 		tx := new(mockTx)
 		pool.On("Begin", ctx).Return(tx, nil).Once()
 		tx.On("Rollback", ctx).Return(nil).Maybe()
-		
+
 		cRepoTx := new(mockChallengeRepo)
 		pRepoTx := new(mockParticipationRepo)
 		cRepo.On("WithTx", tx).Return(cRepoTx).Once()
 		pRepo.On("WithTx", tx).Return(pRepoTx).Once()
-		
+
 		pRepoTx.On("Remove", ctx, userID, challengeID).Return(nil).Once()
 		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(4, nil).Once()
-		
+
 		challenge := &models.Challenge{ID: challengeID, ParticipantCount: 5}
 		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
 		cRepoTx.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
 			return c.ParticipantCount == 4
 		})).Return(nil).Once()
-		
+
 		tx.On("Commit", ctx).Return(nil).Once()
 		redisMock.On("Decr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
-		
+
 		err := service.LeaveChallenge(ctx, userID, challengeID)
 		assert.NoError(t, err)
 	})

@@ -1,10 +1,12 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
 	"github.com/HeadTDev/fitchallenge/internal/pkg/jwt"
@@ -92,8 +94,28 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// Új access token generálása (a role-t itt most egyszerűség kedvéért visszaadjuk)
-	newAccessToken, err := h.jwtManager.GenerateAccessToken(claims.UserID, claims.Role)
+	if claims.TokenUse != jwt.TokenUseRefresh {
+		response.Error(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "Token is not a refresh token")
+		return
+	}
+
+	userUUID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "Invalid user in token")
+		return
+	}
+
+	user, err := h.repo.GetByID(c.Request.Context(), userUUID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.Error(c, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "User not found for token")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "DB_ERROR", "Failed to load user for refresh")
+		return
+	}
+
+	newAccessToken, err := h.jwtManager.GenerateAccessToken(claims.UserID, string(user.Role))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "TOKEN_GEN_FAILED", "Failed to generate new access token")
 		return

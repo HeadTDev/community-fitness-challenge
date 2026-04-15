@@ -48,6 +48,11 @@ func (r *ChallengeRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Chal
 	return r.scanChallenge(r.db.QueryRow(ctx, query, id))
 }
 
+func (r *ChallengeRepo) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*models.Challenge, error) {
+	query := fmt.Sprintf("SELECT %s FROM challenges WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", challengeColumns)
+	return r.scanChallenge(r.db.QueryRow(ctx, query, id))
+}
+
 func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 	query := `
 		UPDATE challenges
@@ -76,13 +81,13 @@ func (r *ChallengeRepo) Delete(ctx context.Context, id uuid.UUID) error {
 func (r *ChallengeRepo) List(ctx context.Context, status *models.ChallengeStatus) ([]*models.Challenge, error) {
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString(fmt.Sprintf("SELECT %s FROM challenges WHERE deleted_at IS NULL", challengeColumns))
-	
+
 	args := []interface{}{}
 	if status != nil {
 		queryBuilder.WriteString(" AND status = $1")
 		args = append(args, *status)
 	}
-	
+
 	queryBuilder.WriteString(" ORDER BY start_date ASC")
 
 	rows, err := r.db.Query(ctx, queryBuilder.String(), args...)

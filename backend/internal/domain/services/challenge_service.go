@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -153,35 +154,6 @@ func (s *challengeService) UploadCoverImage(ctx context.Context, creatorID uuid.
 }
 
 func (s *challengeService) JoinChallenge(ctx context.Context, userID, challengeID uuid.UUID) error {
-	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
-	if err != nil {
-		return err
-	}
-
-	if challenge.Status == models.ChallengeStatusDraft || challenge.Status == models.ChallengeStatusFinished {
-		return fmt.Errorf("cannot join a challenge in draft or finished status")
-	}
-
-	// Check if already joined
-	_, err = s.participationRepo.Get(ctx, userID, challengeID)
-	if err == nil {
-		return domain.ErrAlreadyExists
-	}
-
-	// Check limit
-	if challenge.MaxParticipants > 0 && challenge.ParticipantCount >= challenge.MaxParticipants {
-		return domain.ErrChallengeFull
-	}
-
-	participation := &models.Participation{
-		ID:          uuid.New(),
-		UserID:      userID,
-		ChallengeID: challengeID,
-		JoinedAt:    time.Now(),
-		UpdatedAt:   time.Now(),
-	}
-
-	// Begin Transaction
 	tx, err := s.dbPool.Begin(ctx)
 	if err != nil {
 		s.logger.Error("failed to begin transaction", "error", err)
@@ -192,6 +164,41 @@ func (s *challengeService) JoinChallenge(ctx context.Context, userID, challengeI
 	// Use repositories with transaction
 	challengeRepoTx := s.challengeRepo.(repositories.ChallengeRepositoryWithTx).WithTx(tx)
 	participationRepoTx := s.participationRepo.(repositories.ParticipationRepositoryWithTx).WithTx(tx)
+
+	challenge, err := challengeRepoTx.GetByIDForUpdate(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+
+	if challenge.Status == models.ChallengeStatusDraft || challenge.Status == models.ChallengeStatusFinished {
+		return fmt.Errorf("cannot join a challenge in draft or finished status")
+	}
+
+	// Check if already joined
+	_, err = participationRepoTx.Get(ctx, userID, challengeID)
+	if err == nil {
+		return domain.ErrAlreadyExists
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+
+	// Check capacity under row lock
+	currentCount, err := participationRepoTx.GetParticipantsCount(ctx, challengeID)
+	if err != nil {
+		return err
+	}
+	if challenge.MaxParticipants > 0 && currentCount >= challenge.MaxParticipants {
+		return domain.ErrChallengeFull
+	}
+
+	participation := &models.Participation{
+		ID:          uuid.New(),
+		UserID:      userID,
+		ChallengeID: challengeID,
+		JoinedAt:    time.Now(),
+		UpdatedAt:   time.Now(),
+	}
 
 	if err := participationRepoTx.Add(ctx, participation); err != nil {
 		s.logger.Error("failed to add participation", "user_id", userID, "challenge_id", challengeID, "error", err)

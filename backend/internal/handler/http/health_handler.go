@@ -25,14 +25,14 @@ func (h *HealthHandler) Healthz(c *gin.Context) {
 
 func (h *HealthHandler) Readyz(c *gin.Context) {
 	// Senior tip: Mindig ellenőrizzük az adatbázis kapcsolatot a readyz végponton.
-	dbStatus := "ok"
 	if err := h.db.Ping(c.Request.Context()); err != nil {
-		dbStatus = "error"
+		response.Error(c, http.StatusServiceUnavailable, "DB_NOT_READY", "Database connection is not ready")
+		return
 	}
 
 	response.Success(c, http.StatusOK, gin.H{
 		"status": "ready",
-		"db":     dbStatus,
+		"db":     "ok",
 		"redis":  "ok", // Redis kliens majd később kerül beépítésre
 	})
 }

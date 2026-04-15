@@ -26,6 +26,7 @@ func TestJWTManager(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, userID, claims.UserID)
 		assert.Equal(t, role, claims.Role)
+		assert.Equal(t, TokenUseAccess, claims.TokenUse)
 	})
 
 	t.Run("Generate and Validate Refresh Token", func(t *testing.T) {
@@ -37,6 +38,7 @@ func TestJWTManager(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, userID, claims.UserID)
 		assert.Empty(t, claims.Role) // Refresh tokenben nincs role
+		assert.Equal(t, TokenUseRefresh, claims.TokenUse)
 	})
 
 	t.Run("Expired Token", func(t *testing.T) {
