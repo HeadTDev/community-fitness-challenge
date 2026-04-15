@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api logs-worker logs-localstack aws-status aws-sqs-send-test aws-ses-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
+.PHONY: dev stop logs-api logs-worker logs-localstack aws-status aws-s3-ls aws-sqs-send-test aws-ses-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
 
 # Start services in the background
 dev:
@@ -30,6 +30,9 @@ aws-status:
 	@docker compose exec -T localstack awslocal sqs list-queues
 	@echo "\n--- Secrets ---"
 	@docker compose exec -T localstack awslocal secretsmanager list-secrets
+
+aws-s3-ls:
+	docker compose exec -T localstack awslocal s3 ls
 
 # Send a test log_submitted message to the worker queue
 aws-sqs-send-test:
@@ -88,6 +91,7 @@ help:
 	@echo "  logs-worker     - Follow worker container logs"
 	@echo "  logs-localstack - Follow LocalStack logs"
 	@echo "  aws-status      - List simulated AWS resources"
+	@echo "  aws-s3-ls       - List S3 buckets in LocalStack"
 	@echo "  aws-sqs-send-test - Send a test log_submitted SQS message"
 	@echo "  aws-ses-test    - Send a test email via LocalStack SES"
 	@echo "  verify          - Run Day-to-Day verification script"

@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 32 (Worker SES Dispatch)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 33 (Backend E2E)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -1018,8 +1018,113 @@ else
     report_status "Worker SES: send_email job consumed" "PASS"
 fi
 
-# --- Phase 30: Security Hardening (STRESS TEST) ---
-print_section "Phase 30: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 30: Backend End-to-End Flow ---
+print_section "Phase 30: Backend End-to-End Flow (Day 33)"
+
+AUTH33_CREATOR=$(curl -s -X POST "$API_URL/auth/register-dev")
+TOKEN33_CREATOR=$(echo "$AUTH33_CREATOR" | jq -r '.data.access_token // empty')
+AUTH33_JOINER=$(curl -s -X POST "$API_URL/auth/register-dev")
+TOKEN33_JOINER=$(echo "$AUTH33_JOINER" | jq -r '.data.access_token // empty')
+USER33_JOINER=$(echo "$AUTH33_JOINER" | jq -r '.data.user_id // empty')
+
+if [[ -n "$TOKEN33_CREATOR" ]] && [[ -n "$TOKEN33_JOINER" ]]; then
+    report_status "E2E Flow: dual auth tokens issued" "PASS"
+else
+    report_status "E2E Flow: dual auth tokens issued" "FAIL"
+fi
+
+DAY33_START=$(date -u -d "@$(($(date +%s) - 86400))" +"%Y-%m-%dT%H:%M:%SZ")
+DAY33_END=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+DAY33_CH_RAW=$(curl -s -X POST -H "Authorization: Bearer $TOKEN33_CREATOR" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Day33 E2E Challenge '"$(date +%s)"'",
+        "description": "end-to-end verification",
+        "start_date": "'"$DAY33_START"'",
+        "end_date": "'"$DAY33_END"'",
+        "type": "mixed",
+        "goal": 300
+    }' "$API_URL/v1/challenges")
+DAY33_CH_ID=$(echo "$DAY33_CH_RAW" | jq -r '.data.id // empty')
+
+if [[ -n "$DAY33_CH_ID" ]] && [[ "$DAY33_CH_ID" != "null" ]]; then
+    echo "day33-cover-image" > /tmp/day33_cover.jpg
+    DAY33_COVER_RAW=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: Bearer $TOKEN33_CREATOR" \
+        -F "image=@/tmp/day33_cover.jpg" \
+        "$API_URL/v1/challenges/$DAY33_CH_ID/image")
+    DAY33_COVER_BODY=$(echo "$DAY33_COVER_RAW" | sed '$d')
+    DAY33_COVER_CODE=$(echo "$DAY33_COVER_RAW" | tail -n 1)
+    if [[ "$DAY33_COVER_CODE" == "200" ]] && [[ $DAY33_COVER_BODY == *"image_url"* ]]; then
+        report_status "E2E Flow: cover upload to S3 path" "PASS"
+    else
+        report_status "E2E Flow: cover upload to S3 path" "FAIL" "HTTP: $DAY33_COVER_CODE"
+    fi
+
+    DAY33_PUBLISH_CODE=$(curl -s -o /tmp/day33_publish.json -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN33_CREATOR" "$API_URL/v1/challenges/$DAY33_CH_ID/publish")
+    if [[ "$DAY33_PUBLISH_CODE" == "200" ]]; then
+        report_status "E2E Flow: challenge publish" "PASS"
+    else
+        report_status "E2E Flow: challenge publish" "FAIL" "HTTP: $DAY33_PUBLISH_CODE"
+    fi
+
+    DAY33_JOIN_CODE=$(curl -s -o /tmp/day33_join.json -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN33_JOINER" "$API_URL/v1/challenges/$DAY33_CH_ID/join")
+    if [[ "$DAY33_JOIN_CODE" == "200" ]]; then
+        report_status "E2E Flow: join challenge" "PASS"
+    else
+        report_status "E2E Flow: join challenge" "FAIL" "HTTP: $DAY33_JOIN_CODE"
+    fi
+
+    DAY33_LOG_DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+    DAY33_LOG_CODE=$(curl -s -o /tmp/day33_log.json -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN33_JOINER" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$DAY33_LOG_DATE"'",
+            "steps": 11000,
+            "calories": 600,
+            "active_minutes": 42
+        }' "$API_URL/v1/challenges/$DAY33_CH_ID/logs")
+    if [[ "$DAY33_LOG_CODE" == "201" ]]; then
+        report_status "E2E Flow: submit daily log (SQS path)" "PASS"
+    else
+        report_status "E2E Flow: submit daily log (SQS path)" "FAIL" "HTTP: $DAY33_LOG_CODE"
+    fi
+
+    sleep 4
+    DAY33_LB_BEFORE=$(curl -s -H "Authorization: Bearer $TOKEN33_JOINER" "$API_URL/v1/challenges/$DAY33_CH_ID/leaderboard?type=absolute")
+    DAY33_LB_BEFORE_COUNT=$(echo "$DAY33_LB_BEFORE" | jq -r '.data.top | length // 0')
+    if [[ "$DAY33_LB_BEFORE_COUNT" -ge 1 ]]; then
+        report_status "E2E Flow: leaderboard populated" "PASS"
+    else
+        report_status "E2E Flow: leaderboard populated" "FAIL" "Resp: $DAY33_LB_BEFORE"
+    fi
+
+    DAY33_LEAVE_CODE=$(curl -s -o /tmp/day33_leave.json -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN33_JOINER" "$API_URL/v1/challenges/$DAY33_CH_ID/leave")
+    DAY33_LB_AFTER=$(curl -s -H "Authorization: Bearer $TOKEN33_JOINER" "$API_URL/v1/challenges/$DAY33_CH_ID/leaderboard?type=absolute")
+    DAY33_LEFT_COUNT=$(psql "$DB_CONN" -t -A -q -c "SELECT COUNT(*) FROM participations WHERE challenge_id = '$DAY33_CH_ID' AND user_id = '$USER33_JOINER';" | xargs || true)
+    if [[ "$DAY33_LEAVE_CODE" == "200" ]] && [[ "$DAY33_LEFT_COUNT" == "0" ]] && [[ $DAY33_LB_AFTER == *"\"success\":true"* ]]; then
+        report_status "E2E Flow: leave updates leaderboard" "PASS"
+    else
+        report_status "E2E Flow: leave updates leaderboard" "FAIL" "leave_http=$DAY33_LEAVE_CODE left_count=$DAY33_LEFT_COUNT"
+    fi
+else
+    report_status "E2E Flow: cover upload to S3 path" "FAIL" "Challenge create failed"
+    report_status "E2E Flow: challenge publish" "FAIL"
+    report_status "E2E Flow: join challenge" "FAIL"
+    report_status "E2E Flow: submit daily log (SQS path)" "FAIL"
+    report_status "E2E Flow: leaderboard populated" "FAIL"
+    report_status "E2E Flow: leave updates leaderboard" "FAIL"
+fi
+
+DAY33_AWS_STATUS=$(curl -s -H "Authorization: Bearer $TOKEN33_CREATOR" "$API_URL/v1/aws-status")
+DAY33_LS_SECRETS=$(curl -s "$LS_URL/_localstack/health" | jq -r '.services.secretsmanager // empty')
+if [[ $DAY33_AWS_STATUS == *"\"s3\":\"ok\""* ]] && [[ $DAY33_AWS_STATUS == *"\"sqs\":\"ok\""* ]] && ([[ $DAY33_AWS_STATUS == *"\"secrets\":\"ok\""* ]] || [[ "$DAY33_LS_SECRETS" == "available" ]] || [[ "$DAY33_LS_SECRETS" == "running" ]]); then
+    report_status "E2E Flow: AWS status includes S3/SQS/Secrets" "PASS"
+else
+    report_status "E2E Flow: AWS status includes S3/SQS/Secrets" "FAIL" "Resp: $DAY33_AWS_STATUS"
+fi
+
+# --- Phase 31: Security Hardening (STRESS TEST) ---
+print_section "Phase 31: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0

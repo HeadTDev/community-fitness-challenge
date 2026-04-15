@@ -346,6 +346,7 @@ func TestLeaveChallenge(t *testing.T) {
 
 		tx.On("Commit", ctx).Return(nil).Once()
 		redisMock.On("Decr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
+		redisMock.On("Del", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
 
 		err := service.LeaveChallenge(ctx, userID, challengeID)
 		assert.NoError(t, err)

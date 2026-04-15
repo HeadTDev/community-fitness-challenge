@@ -41,7 +41,8 @@ func (h *HealthHandler) Readyz(c *gin.Context) {
 func (h *HealthHandler) AWSStatus(c *gin.Context) {
 	// Egyelőre statikus 'ok' válasz a feladat szerint.
 	response.Success(c, http.StatusOK, gin.H{
-		"s3":  "ok",
-		"sqs": "ok",
+		"s3":      "ok",
+		"sqs":     "ok",
+		"secrets": "ok",
 	})
 }

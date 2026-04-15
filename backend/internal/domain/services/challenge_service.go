@@ -298,6 +298,10 @@ func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challenge
 	if err := s.redisClient.Decr(ctx, counterKey).Err(); err != nil {
 		s.logger.Warn("Redis error decrementing counter", "challenge_id", challengeID, "error", err)
 	}
+	leaderboardKey := fmt.Sprintf(domain.RedisKeyLeaderboard, challengeID.String())
+	if err := s.redisClient.Del(ctx, leaderboardKey).Err(); err != nil {
+		s.logger.Warn("Redis error clearing leaderboard cache on leave", "challenge_id", challengeID, "error", err)
+	}
 
 	return nil
 }
