@@ -26,6 +26,10 @@ type redisSetNXClient interface {
 	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 }
 
+type redisLeaderboardWriter interface {
+	ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd
+}
+
 type SubmitDailyLogInput struct {
 	LogDate           *time.Time
 	Steps             int
@@ -159,6 +163,9 @@ func (s *logService) SubmitDailyLog(ctx context.Context, userID, challengeID uui
 
 	if err := s.syncParticipationScore(ctx, userID, challengeID); err != nil {
 		s.logger.Warn("failed to sync participation score after daily log submission", "user_id", userID, "challenge_id", challengeID, "error", err)
+	}
+	if err := s.syncRedisLeaderboardScore(ctx, userID, challengeID); err != nil {
+		s.logger.Warn("failed to sync redis leaderboard score after daily log submission", "user_id", userID, "challenge_id", challengeID, "error", err)
 	}
 
 	s.publishLogSubmittedEvent(ctx, log)
@@ -318,4 +325,25 @@ func (s *logService) syncParticipationScore(ctx context.Context, userID, challen
 
 	aggregation := calculateDailyLogAggregation(logs)
 	return s.participationRepo.UpdateCurrentScore(ctx, userID, challengeID, int(round2(aggregation.TotalScore)))
+}
+
+func (s *logService) syncRedisLeaderboardScore(ctx context.Context, userID, challengeID uuid.UUID) error {
+	leaderboardRedis, ok := s.redisClient.(redisLeaderboardWriter)
+	if !ok {
+		return fmt.Errorf("redis client missing ZAdd capability: %w", domain.ErrInternal)
+	}
+
+	participation, err := s.participationRepo.Get(ctx, userID, challengeID)
+	if err != nil {
+		return err
+	}
+
+	key := fmt.Sprintf(domain.RedisKeyLeaderboard, challengeID.String())
+	if _, err := leaderboardRedis.ZAdd(ctx, key, redis.Z{
+		Score:  float64(participation.CurrentScore),
+		Member: userID.String(),
+	}).Result(); err != nil {
+		return err
+	}
+	return nil
 }

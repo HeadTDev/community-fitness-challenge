@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 27 (Log Service Tests + Edge Cases)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 28 (Redis Leaderboard Alapok)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -749,8 +749,83 @@ else
     report_status "Log Service Edge: Concurrent submit case" "FAIL"
 fi
 
-# --- Phase 22: Security Hardening (STRESS TEST) ---
-print_section "Phase 22: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 22: Redis Leaderboard Alapok ---
+print_section "Phase 22: Redis Leaderboard Alapok (Day 28)"
+
+LB28_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LB28_END=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+LB28_DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+LB28_TS=$(date +%s)
+
+LB28_CHALLENGE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Leaderboard Base Challenge '"$LB28_TS"'",
+        "description": "Redis leaderboard verification",
+        "start_date": "'"$LB28_START"'",
+        "end_date": "'"$LB28_END"'",
+        "type": "mixed",
+        "goal": 1000
+    }' "$API_URL/v1/challenges")
+LB28_CHALLENGE_ID=$(echo "$LB28_CHALLENGE" | jq -r '.data.id')
+
+if [[ "$LB28_CHALLENGE_ID" != "null" ]] && [[ -n "$LB28_CHALLENGE_ID" ]]; then
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LB28_CHALLENGE_ID/publish" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LB28_CHALLENGE_ID/join" > /dev/null
+    USER1_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/v1/users/me" | jq -r '.data.id')
+
+    # User1 higher score
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$LB28_DATE"'",
+            "steps": 12000,
+            "calories": 650,
+            "active_minutes": 45
+        }' "$API_URL/v1/challenges/$LB28_CHALLENGE_ID/logs" > /dev/null
+
+    # User2 lower score
+    TOKEN4=$(curl -s -X POST "$API_URL/auth/register-dev" | jq -r '.data.access_token')
+    curl -s -X POST -H "Authorization: Bearer $TOKEN4" "$API_URL/v1/challenges/$LB28_CHALLENGE_ID/join" > /dev/null
+    USER2_ID=$(curl -s -H "Authorization: Bearer $TOKEN4" "$API_URL/v1/users/me" | jq -r '.data.id')
+    curl -s -X POST -H "Authorization: Bearer $TOKEN4" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$LB28_DATE"'",
+            "steps": 4000,
+            "calories": 250,
+            "active_minutes": 15
+        }' "$API_URL/v1/challenges/$LB28_CHALLENGE_ID/logs" > /dev/null
+
+    LB28_FIRST_MEMBER=$(redis-cli -h ${REDIS_HOST:-redis} ZREVRANGE "leaderboard:$LB28_CHALLENGE_ID" 0 0 | tr -d '\r')
+    if [[ "$LB28_FIRST_MEMBER" == "$USER1_ID" ]]; then
+        report_status "Redis Leaderboard: top member ordering" "PASS"
+    else
+        report_status "Redis Leaderboard: top member ordering" "FAIL" "top: $LB28_FIRST_MEMBER expected: $USER1_ID"
+    fi
+
+    LB28_COUNT=$(redis-cli -h ${REDIS_HOST:-redis} ZCARD "leaderboard:$LB28_CHALLENGE_ID" | tr -d '\r')
+    if [[ "$LB28_COUNT" == "2" ]]; then
+        report_status "Redis Leaderboard: total count (2 users)" "PASS"
+    else
+        report_status "Redis Leaderboard: total count (2 users)" "FAIL" "count: $LB28_COUNT"
+    fi
+
+    LB28_USER2_RANK=$(redis-cli -h ${REDIS_HOST:-redis} ZREVRANK "leaderboard:$LB28_CHALLENGE_ID" "$USER2_ID" | tr -d '\r')
+    if [[ "$LB28_USER2_RANK" == "1" ]]; then
+        report_status "Redis Leaderboard: ZREVRANK consistency" "PASS"
+    else
+        report_status "Redis Leaderboard: ZREVRANK consistency" "FAIL" "rank: $LB28_USER2_RANK"
+    fi
+else
+    report_status "Redis Leaderboard: setup challenge created" "FAIL" "Resp: $LB28_CHALLENGE"
+    report_status "Redis Leaderboard: top member ordering" "FAIL"
+    report_status "Redis Leaderboard: total count (2 users)" "FAIL"
+    report_status "Redis Leaderboard: ZREVRANK consistency" "FAIL"
+fi
+
+# --- Phase 23: Security Hardening (STRESS TEST) ---
+print_section "Phase 23: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0

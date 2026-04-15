@@ -184,10 +184,14 @@ func (f *fakeQueuePublisher) SendMessage(_ context.Context, _ string, body strin
 type fakeRedisClient struct {
 	mu     sync.Mutex
 	values map[string]string
+	zsets  map[string]map[string]float64
 }
 
 func newFakeRedisClient() *fakeRedisClient {
-	return &fakeRedisClient{values: map[string]string{}}
+	return &fakeRedisClient{
+		values: map[string]string{},
+		zsets:  map[string]map[string]float64{},
+	}
 }
 
 func (f *fakeRedisClient) Get(ctx context.Context, key string) *redis.StringCmd {
@@ -265,6 +269,28 @@ func (f *fakeRedisClient) Del(ctx context.Context, keys ...string) *redis.IntCmd
 
 func (f *fakeRedisClient) Pipeline() redis.Pipeliner { return nil }
 func (f *fakeRedisClient) Close() error              { return nil }
+
+func (f *fakeRedisClient) ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := redis.NewIntCmd(ctx)
+	if _, ok := f.zsets[key]; !ok {
+		f.zsets[key] = map[string]float64{}
+	}
+	added := int64(0)
+	for _, member := range members {
+		memberID, ok := member.Member.(string)
+		if !ok {
+			continue
+		}
+		if _, exists := f.zsets[key][memberID]; !exists {
+			added++
+		}
+		f.zsets[key][memberID] = member.Score
+	}
+	cmd.SetVal(added)
+	return cmd
+}
 
 func (f *fakeRedisClient) has(key string) bool {
 	f.mu.Lock()
