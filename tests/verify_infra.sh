@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 23 (Scoring Engine)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 24 (Daily Lock + SQS Event)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -46,6 +46,17 @@ report_status() {
 
 # --- Main Script ---
 print_header
+
+# Reset volatile Redis state so previous verifier runs don't affect current results.
+redis-cli -h ${REDIS_HOST:-redis} FLUSHDB > /dev/null || true
+
+# Wait until API is reachable to avoid transient failures after rebuild/restart.
+for i in $(seq 1 60); do
+    if curl -sf "$API_URL/healthz" > /dev/null; then
+        break
+    fi
+    sleep 1
+done
 
 # --- Phase 1: Infrastructure ---
 print_section "Phase 1: Infrastructure Connectivity (Day 1-3)"
@@ -401,25 +412,6 @@ else
     report_status "Docs: Postman Collection Export" "FAIL"
 fi
 
-# --- Phase 14: Security Hardening (STRESS TEST) ---
-print_section "Phase 14: Security Hardening & Rate Limiting (Day 13)"
-
-# Rate Limit Test (65 requests to trigger 429) - PERFORMED LAST
-RL_TRIGGERED=0
-for i in $(seq 1 65); do
-    RESP=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz")
-    if [ "$RESP" == "429" ]; then
-        RL_TRIGGERED=1
-        break
-    fi
-done
-
-if [ $RL_TRIGGERED -eq 1 ]; then
-    report_status "Rate Limiting: Sliding Window (429)" "PASS"
-else
-    report_status "Rate Limiting: Sliding Window (429)" "FAIL"
-fi
-
 # --- Phase 15: Code Refactoring Verification ---
 print_section "Phase 15: Code Refactoring & Unit Tests (Day 21)"
 
@@ -514,6 +506,95 @@ if [[ "$SCORING_REF" == "72.50" ]]; then
     report_status "Scoring Engine: Reference fixture (72.50)" "PASS"
 else
     report_status "Scoring Engine: Reference fixture (72.50)" "FAIL" "Score: $SCORING_REF"
+fi
+
+# --- Phase 18: Daily Lock + SQS Event ---
+print_section "Phase 18: Daily Lock + SQS Event (Day 24)"
+
+LOG24_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LOG24_END=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+LOG24_DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+LOG24_TS=$(date +%s)
+
+LOG24_CHALLENGE_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Log Lock Challenge '"$LOG24_TS"'",
+        "description": "Daily lock verification",
+        "start_date": "'"$LOG24_START"'",
+        "end_date": "'"$LOG24_END"'",
+        "type": "mixed",
+        "goal": 500
+    }' "$API_URL/v1/challenges")
+LOG24_CHALLENGE_ID=$(echo "$LOG24_CHALLENGE_RESP" | jq -r '.data.id')
+
+if [[ "$LOG24_CHALLENGE_ID" != "null" ]] && [[ -n "$LOG24_CHALLENGE_ID" ]]; then
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LOG24_CHALLENGE_ID/publish" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LOG24_CHALLENGE_ID/join" > /dev/null
+
+    LOG24_PAYLOAD='{
+        "log_date": "'"$LOG24_DATE"'",
+        "steps": 12000,
+        "calories": 650,
+        "active_minutes": 45
+    }'
+
+    LOG24_FIRST_RAW=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "$LOG24_PAYLOAD" \
+        "$API_URL/v1/challenges/$LOG24_CHALLENGE_ID/logs")
+    LOG24_FIRST_BODY=$(echo "$LOG24_FIRST_RAW" | sed '$d')
+    LOG24_FIRST_CODE=$(echo "$LOG24_FIRST_RAW" | tail -n 1)
+
+    if [[ "$LOG24_FIRST_CODE" == "201" ]] && [[ $LOG24_FIRST_BODY == *"\"score\":72.5"* ]]; then
+        report_status "Log API: First daily log submit (201 + score)" "PASS"
+    else
+        report_status "Log API: First daily log submit (201 + score)" "FAIL" "HTTP: $LOG24_FIRST_CODE Body: $LOG24_FIRST_BODY"
+    fi
+
+    LOG24_SECOND_CODE=$(curl -s -o /tmp/log24_second.json -w "%{http_code}" -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "$LOG24_PAYLOAD" \
+        "$API_URL/v1/challenges/$LOG24_CHALLENGE_ID/logs")
+    LOG24_SECOND_BODY=$(cat /tmp/log24_second.json)
+    if [[ "$LOG24_SECOND_CODE" == "409" ]] && [[ $LOG24_SECOND_BODY == *"ALREADY_LOGGED"* ]]; then
+        report_status "Log API: Same-day duplicate blocked (409)" "PASS"
+    else
+        report_status "Log API: Same-day duplicate blocked (409)" "FAIL" "HTTP: $LOG24_SECOND_CODE Body: $LOG24_SECOND_BODY"
+    fi
+
+    # Minimal SQS receive via Query API against known queue URL.
+    LOG24_QUEUE_XML=$(curl -s -X POST "$LS_URL/000000000000/fitchallenge-jobs" \
+        -d "Action=ReceiveMessage&MaxNumberOfMessages=5&WaitTimeSeconds=1&VisibilityTimeout=0&Version=2012-11-05")
+    if [[ $LOG24_QUEUE_XML == *"log_submitted"* ]]; then
+        report_status "SQS Event: log_submitted published" "PASS"
+    else
+        report_status "SQS Event: log_submitted published" "FAIL"
+    fi
+else
+    report_status "Log API: Day 24 setup challenge created" "FAIL" "Resp: $LOG24_CHALLENGE_RESP"
+    report_status "Log API: First daily log submit (201 + score)" "FAIL"
+    report_status "Log API: Same-day duplicate blocked (409)" "FAIL"
+    report_status "SQS Event: log_submitted published" "FAIL"
+fi
+
+# --- Phase 19: Security Hardening (STRESS TEST) ---
+print_section "Phase 19: Security Hardening & Rate Limiting (Day 13)"
+
+# Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
+RL_TRIGGERED=0
+for i in $(seq 1 65); do
+    RESP=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz")
+    if [ "$RESP" == "429" ]; then
+        RL_TRIGGERED=1
+        break
+    fi
+done
+
+if [ $RL_TRIGGERED -eq 1 ]; then
+    report_status "Rate Limiting: Sliding Window (429)" "PASS"
+else
+    report_status "Rate Limiting: Sliding Window (429)" "FAIL"
 fi
 
 # --- Summary ---

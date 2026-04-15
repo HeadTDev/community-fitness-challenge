@@ -48,4 +48,3 @@ func TestScoringServiceCapsToHundred(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 100.0, result.Score)
 }
-

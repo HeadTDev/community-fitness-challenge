@@ -16,12 +16,14 @@ import (
 )
 
 type ChallengeHandler struct {
-	service services.ChallengeService
+	service    services.ChallengeService
+	logService services.LogService
 }
 
-func NewChallengeHandler(service services.ChallengeService) *ChallengeHandler {
+func NewChallengeHandler(service services.ChallengeService, logService services.LogService) *ChallengeHandler {
 	return &ChallengeHandler{
-		service: service,
+		service:    service,
+		logService: logService,
 	}
 }
 
@@ -50,6 +52,15 @@ type prizeRequest struct {
 	Description  *string `json:"description" binding:"omitempty,max=500"`
 	ImageURL     *string `json:"image_url" binding:"omitempty,url"`
 	RankRequired int     `json:"rank_required" binding:"required,min=1"`
+}
+
+type submitDailyLogRequest struct {
+	LogDate           *time.Time `json:"log_date" binding:"omitempty"`
+	Steps             int        `json:"steps" binding:"required,min=0"`
+	Calories          int        `json:"calories" binding:"required,min=0"`
+	ActiveMinutes     int        `json:"active_minutes" binding:"required,min=0"`
+	HealthKitDataHash *string    `json:"healthkit_data_hash" binding:"omitempty,max=128"`
+	SourceBundleIDs   []string   `json:"source_bundle_ids" binding:"omitempty"`
 }
 
 func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
@@ -433,4 +444,47 @@ func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"message": "Successfully left challenge"})
+}
+
+func (h *ChallengeHandler) SubmitDailyLog(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	var req submitDailyLogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		return
+	}
+
+	log, err := h.logService.SubmitDailyLog(c.Request.Context(), userID, challengeID, services.SubmitDailyLogInput{
+		LogDate:           req.LogDate,
+		Steps:             req.Steps,
+		Calories:          req.Calories,
+		ActiveMinutes:     req.ActiveMinutes,
+		HealthKitDataHash: req.HealthKitDataHash,
+		SourceBundleIDs:   req.SourceBundleIDs,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge or participation not found")
+		case errors.Is(err, domain.ErrAlreadyExists):
+			response.Error(c, http.StatusConflict, "ALREADY_LOGGED", "Daily log already submitted for this day")
+		case errors.Is(err, domain.ErrInvalidInput), errors.Is(err, domain.ErrBadRequest):
+			response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to submit daily log")
+		}
+		return
+	}
+
+	response.Success(c, http.StatusCreated, log.ToResponse())
 }

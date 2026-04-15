@@ -49,28 +49,32 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 
 	// 2. Initialize JWT & AWS Clients
 	jwtManager := jwt.NewJWTManager(cfg.JWT.Secret, 15*time.Minute, 7*24*time.Hour)
-	
+
 	awsCfg, err := aws.NewAWSConfig(ctx, cfg)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 	s3Client := aws.NewS3Client(awsCfg, cfg.S3PublicURL)
+	sqsClient := aws.NewSQSClient(awsCfg)
 
 	// 3. Initialize Repositories
 	userRepo := postgres.NewUserRepo(dbPool)
 	challengeRepo := postgres.NewChallengeRepo(dbPool)
 	participationRepo := postgres.NewParticipationRepo(dbPool)
 	prizeRepo := postgres.NewPrizeRepo(dbPool)
+	dailyLogRepo := postgres.NewDailyLogRepo(dbPool)
 
 	// 4. Initialize Services
 	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, logger)
+	scoringService := services.NewScoringService()
+	logService := services.NewLogService(challengeRepo, participationRepo, dailyLogRepo, redisClient, scoringService, sqsClient, logger)
 
 	// 5. Initialize Router
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	
+
 	r := gin.New()
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.LoggerMiddleware())
@@ -81,7 +85,7 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	healthHandler := handler.NewHealthHandler(dbPool)
 	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
 	userHandler := handler.NewUserHandler(userRepo, s3Client)
-	challengeHandler := handler.NewChallengeHandler(challengeService)
+	challengeHandler := handler.NewChallengeHandler(challengeService, logService)
 
 	// Register Routes
 	RegisterRoutes(r, healthHandler, authHandler, userHandler, challengeHandler, jwtManager)
@@ -116,7 +120,7 @@ func RegisterRoutes(
 		v1.GET("/users/profile", user.GetProfile)
 		v1.PUT("/users/profile", user.UpdateProfile)
 		v1.POST("/users/profile/avatar", user.UploadAvatar)
-		
+
 		// Challenge routes
 		v1.POST("/challenges", challenge.CreateChallenge)
 		v1.GET("/challenges", challenge.ListChallenges)
@@ -125,6 +129,7 @@ func RegisterRoutes(
 		v1.POST("/challenges/:id/image", challenge.UploadCoverImage)
 		v1.POST("/challenges/:id/join", challenge.JoinChallenge)
 		v1.POST("/challenges/:id/leave", challenge.LeaveChallenge)
+		v1.POST("/challenges/:id/logs", challenge.SubmitDailyLog)
 
 		// Prize routes
 		v1.GET("/challenges/:id/prizes", challenge.GetPrizes)

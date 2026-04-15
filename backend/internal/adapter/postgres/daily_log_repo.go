@@ -36,9 +36,13 @@ func (r *DailyLogRepo) Create(ctx context.Context, log *models.DailyLog) error {
 	`
 
 	logDate := normalizeDate(log.LogDate)
+	sourceBundleIDs := log.SourceBundleIDs
+	if sourceBundleIDs == nil {
+		sourceBundleIDs = []string{}
+	}
 	_, err := r.db.Exec(ctx, query,
 		log.ID, log.UserID, log.ChallengeID, logDate, log.Steps, log.Calories, log.ActiveMinutes, log.Score,
-		log.HealthKitDataHash, log.SourceBundleIDs, log.CreatedAt, log.UpdatedAt,
+		log.HealthKitDataHash, sourceBundleIDs, log.CreatedAt, log.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
