@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 26 (My Progress + Creator Stats)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 27 (Log Service Tests + Edge Cases)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -712,8 +712,45 @@ else
     report_status "My Progress: relative_to_creator.percentage" "FAIL"
 fi
 
-# --- Phase 21: Security Hardening (STRESS TEST) ---
-print_section "Phase 21: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 21: Log Service Tests + Edge Cases ---
+print_section "Phase 21: Log Service Tests + Edge Cases (Day 27)"
+
+LOG_TEST_FILE="/app/backend/internal/domain/services/log_service_test.go"
+if [ -f "$LOG_TEST_FILE" ]; then
+    TEST_COUNT=$(grep -cE '^func TestLogService_' "$LOG_TEST_FILE" || true)
+    if [ "$TEST_COUNT" -ge 8 ]; then
+        report_status "Log Service Tests: >= 8 test cases" "PASS" "Count: $TEST_COUNT"
+    else
+        report_status "Log Service Tests: >= 8 test cases" "FAIL" "Count: $TEST_COUNT"
+    fi
+
+    if grep -q "LockCleanupOnCreateFailure" "$LOG_TEST_FILE"; then
+        report_status "Log Service Edge: Redis lock cleanup case" "PASS"
+    else
+        report_status "Log Service Edge: Redis lock cleanup case" "FAIL"
+    fi
+
+    if grep -q "TimezoneNormalized" "$LOG_TEST_FILE"; then
+        report_status "Log Service Edge: Timezone normalization case" "PASS"
+    else
+        report_status "Log Service Edge: Timezone normalization case" "FAIL"
+    fi
+
+    if grep -q "ConcurrentSameDay" "$LOG_TEST_FILE"; then
+        report_status "Log Service Edge: Concurrent submit case" "PASS"
+    else
+        report_status "Log Service Edge: Concurrent submit case" "FAIL"
+    fi
+else
+    report_status "Log Service Tests: test file exists" "FAIL"
+    report_status "Log Service Tests: >= 8 test cases" "FAIL"
+    report_status "Log Service Edge: Redis lock cleanup case" "FAIL"
+    report_status "Log Service Edge: Timezone normalization case" "FAIL"
+    report_status "Log Service Edge: Concurrent submit case" "FAIL"
+fi
+
+# --- Phase 22: Security Hardening (STRESS TEST) ---
+print_section "Phase 22: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0
