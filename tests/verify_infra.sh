@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 29 (Leaderboard APIk)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 30 (Fallback + Rebuild)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -933,8 +933,27 @@ else
     report_status "Leaderboard Relative: nearby window" "FAIL"
 fi
 
-# --- Phase 25: Security Hardening (STRESS TEST) ---
-print_section "Phase 25: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 25: Leaderboard Consistency + PostgreSQL Fallback ---
+print_section "Phase 25: Leaderboard Consistency + PostgreSQL Fallback (Day 30)"
+
+# Simulate Redis leaderboard miss and verify API still returns ranked data via PostgreSQL fallback.
+redis-cli -h ${REDIS_HOST:-redis} DEL "leaderboard:$LB29_CHALLENGE_ID" > /dev/null || true
+LB30_FALLBACK=$(curl -s -H "Authorization: Bearer $TOKEN5" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/leaderboard?type=absolute")
+LB30_FALLBACK_TOP=$(echo "$LB30_FALLBACK" | jq -r '.data.top | length // 0')
+if [[ "$LB30_FALLBACK_TOP" -ge 1 ]]; then
+    report_status "Leaderboard Fallback: PostgreSQL query serves data" "PASS"
+else
+    report_status "Leaderboard Fallback: PostgreSQL query serves data" "FAIL" "Resp: $LB30_FALLBACK"
+fi
+
+if grep -q "^leaderboard-rebuild:" /app/Makefile && [ -f "/app/backend/cmd/leaderboard-rebuild/main.go" ]; then
+    report_status "Leaderboard Rebuild: command wiring present" "PASS"
+else
+    report_status "Leaderboard Rebuild: command wiring present" "FAIL"
+fi
+
+# --- Phase 26: Security Hardening (STRESS TEST) ---
+print_section "Phase 26: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0

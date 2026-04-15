@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api aws-status verify db-migrate seed db-migrate-down db-shell db-tables restart-api test clean status help
+.PHONY: dev stop logs-api aws-status verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
 
 # Start services in the background
 dev:
@@ -51,6 +51,10 @@ db-tables:
 test:
 	docker compose exec -T api go test ./... -v
 
+# Rebuild Redis leaderboard keys from PostgreSQL participations
+leaderboard-rebuild:
+	docker compose exec -T api go run cmd/leaderboard-rebuild/main.go
+
 # Clean up build artifacts and temporary files
 clean:
 	rm -rf backend/tmp/
@@ -74,6 +78,7 @@ help:
 	@echo "  db-tables       - List all database tables"
 	@echo "  db-shell        - Enter PostgreSQL shell"
 	@echo "  test            - Run backend Go tests"
+	@echo "  leaderboard-rebuild - Rebuild Redis leaderboard from PostgreSQL"
 	@echo "  restart-api     - Restart the API service"
 	@echo "  clean           - Wipe volumes and build artifacts"
 	@echo "  status          - Show docker container status"
