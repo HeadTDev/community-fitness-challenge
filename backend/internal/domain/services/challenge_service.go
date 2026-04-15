@@ -2,10 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/aws"
@@ -39,15 +41,23 @@ type challengeService struct {
 	prizeRepo         repositories.PrizeRepository
 	s3Client          aws.S3Client
 	redisClient       domain.RedisClient
+	sqsClient         challengeEventPublisher
 	logger            *slog.Logger
 }
 
 const (
-	ChallengeBucket = "fitchallenge-assets"
-	ChallengePrefix = "challenges"
+	ChallengeBucket          = "fitchallenge-assets"
+	ChallengePrefix          = "challenges"
+	challengeEventsQueueName = "fitchallenge-jobs"
+	notificationSenderEmail  = "noreply@fitchallenge.local"
 
 	// Redis keys
 )
+
+type challengeEventPublisher interface {
+	GetQueueURL(ctx context.Context, queueName string) (string, error)
+	SendMessage(ctx context.Context, queueURL, body string) (string, error)
+}
 
 func NewChallengeService(
 	dbPool domain.DBPool,
@@ -57,6 +67,7 @@ func NewChallengeService(
 	prizeRepo repositories.PrizeRepository,
 	s3Client aws.S3Client,
 	redisClient domain.RedisClient,
+	sqsClient challengeEventPublisher,
 	logger *slog.Logger,
 ) ChallengeService {
 	return &challengeService{
@@ -67,6 +78,7 @@ func NewChallengeService(
 		prizeRepo:         prizeRepo,
 		s3Client:          s3Client,
 		redisClient:       redisClient,
+		sqsClient:         sqsClient,
 		logger:            logger,
 	}
 }
@@ -120,7 +132,12 @@ func (s *challengeService) PublishChallenge(ctx context.Context, creatorID uuid.
 	challenge.Status = models.ChallengeStatusUpcoming
 	challenge.UpdatedAt = time.Now()
 
-	return s.challengeRepo.Update(ctx, challenge)
+	if err := s.challengeRepo.Update(ctx, challenge); err != nil {
+		return err
+	}
+
+	s.enqueuePublishNotifications(ctx, challenge)
+	return nil
 }
 
 func (s *challengeService) UploadCoverImage(ctx context.Context, creatorID uuid.UUID, challengeID uuid.UUID, body io.Reader, contentType string) (string, error) {
@@ -433,4 +450,66 @@ func (s *challengeService) DeletePrize(ctx context.Context, creatorID, challenge
 
 func (s *challengeService) GetPrizesByChallengeID(ctx context.Context, challengeID uuid.UUID) ([]*models.Prize, error) {
 	return s.prizeRepo.GetByChallengeID(ctx, challengeID)
+}
+
+func (s *challengeService) enqueuePublishNotifications(ctx context.Context, challenge *models.Challenge) {
+	if s.sqsClient == nil {
+		return
+	}
+
+	queueURL, err := s.sqsClient.GetQueueURL(ctx, challengeEventsQueueName)
+	if err != nil {
+		s.logger.Warn("failed to resolve queue for publish notifications", "queue", challengeEventsQueueName, "error", err)
+		return
+	}
+
+	recipients := map[uuid.UUID]struct{}{
+		challenge.CreatorID: {},
+	}
+
+	participants, err := s.participationRepo.ListByChallenge(ctx, challenge.ID)
+	if err != nil {
+		s.logger.Warn("failed to list participants for publish notifications", "challenge_id", challenge.ID, "error", err)
+	} else {
+		for _, p := range participants {
+			recipients[p.UserID] = struct{}{}
+		}
+	}
+
+	for userID := range recipients {
+		user, userErr := s.userRepo.GetByID(ctx, userID)
+		if userErr != nil {
+			s.logger.Warn("failed to resolve notification recipient", "user_id", userID, "error", userErr)
+			continue
+		}
+		if strings.TrimSpace(user.Email) == "" {
+			s.logger.Warn("skipping notification for empty recipient email", "user_id", userID)
+			continue
+		}
+
+		payload := map[string]any{
+			"schema_version":  "v1",
+			"type":            "send_email",
+			"event_type":      "send_email",
+			"producer":        "challenge_service.publish",
+			"idempotency_key": fmt.Sprintf("challenge_publish:%s:user:%s", challenge.ID.String(), userID.String()),
+			"challenge_id":    challenge.ID.String(),
+			"user_id":         userID.String(),
+			"to":              user.Email,
+			"subject":         fmt.Sprintf("Challenge published: %s", challenge.Title),
+			"body":            fmt.Sprintf("<h1>%s</h1><p>Your challenge is now live in Community Fitness Challenge.</p>", challenge.Title),
+			"sender":          notificationSenderEmail,
+		}
+
+		bodyBytes, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			s.logger.Warn("failed to marshal publish notification payload", "challenge_id", challenge.ID, "user_id", userID, "error", marshalErr)
+			continue
+		}
+
+		if _, sendErr := s.sqsClient.SendMessage(ctx, queueURL, string(bodyBytes)); sendErr != nil {
+			s.logger.Warn("failed to enqueue publish notification", "challenge_id", challenge.ID, "user_id", userID, "error", sendErr)
+			continue
+		}
+	}
 }

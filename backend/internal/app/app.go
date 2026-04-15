@@ -69,7 +69,7 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	leaderboardFallbackRepo := postgres.NewLeaderboardRepo(dbPool)
 
 	// 4. Initialize Services
-	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, logger)
+	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, sqsClient, logger)
 	scoringService := services.NewScoringService()
 	logService := services.NewLogService(challengeRepo, participationRepo, dailyLogRepo, redisClient, scoringService, sqsClient, logger)
 	leaderboardService := services.NewLeaderboardService(leaderboardRepo, leaderboardFallbackRepo, participationRepo, challengeRepo)

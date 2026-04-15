@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api logs-worker aws-status aws-sqs-send-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
+.PHONY: dev stop logs-api logs-worker logs-localstack aws-status aws-sqs-send-test aws-ses-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
 
 # Start services in the background
 dev:
@@ -18,6 +18,10 @@ logs-api:
 logs-worker:
 	docker compose logs -f worker
 
+# View real-time logs for LocalStack service
+logs-localstack:
+	docker compose logs -f localstack
+
 # Quick status check of LocalStack resources
 aws-status:
 	@echo "--- S3 Buckets ---"
@@ -30,6 +34,9 @@ aws-status:
 # Send a test log_submitted message to the worker queue
 aws-sqs-send-test:
 	docker compose exec -T localstack sh -lc 'Q=$$(awslocal sqs get-queue-url --queue-name fitchallenge-jobs --query QueueUrl --output text) && awslocal sqs send-message --queue-url "$$Q" --message-body "{\"event_type\":\"log_submitted\",\"user_id\":\"make-test-user\"}"'
+
+aws-ses-test:
+	docker compose exec -T localstack awslocal ses send-email --from noreply@fitchallenge.local --destination '{"ToAddresses":["test@example.com"]}' --message '{"Subject":{"Data":"Test Email"},"Body":{"Html":{"Data":"<h1>Hello from LocalStack SES</h1>"}}}'
 
 # Run the full infrastructure and API verification script inside a Docker container
 verify:
@@ -79,8 +86,10 @@ help:
 	@echo "  stop            - Stop and remove containers"
 	@echo "  logs-api        - Follow API container logs"
 	@echo "  logs-worker     - Follow worker container logs"
+	@echo "  logs-localstack - Follow LocalStack logs"
 	@echo "  aws-status      - List simulated AWS resources"
 	@echo "  aws-sqs-send-test - Send a test log_submitted SQS message"
+	@echo "  aws-ses-test    - Send a test email via LocalStack SES"
 	@echo "  verify          - Run Day-to-Day verification script"
 	@echo "  db-migrate      - Apply pending migrations"
 	@echo "  seed            - Populate the database with sample data"

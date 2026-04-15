@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 31 (Worker SQS Polling)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 32 (Worker SES Dispatch)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -983,8 +983,43 @@ else
     report_status "Worker Polling: queued job consumed" "PASS"
 fi
 
-# --- Phase 28: Security Hardening (STRESS TEST) ---
-print_section "Phase 28: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 29: Worker SES Email Dispatch ---
+print_section "Phase 29: Worker SES Email Dispatch (Day 32)"
+
+if grep -q "^aws-ses-test:" /app/Makefile && grep -q "^logs-localstack:" /app/Makefile; then
+    report_status "Worker SES Tooling: Makefile targets present" "PASS"
+else
+    report_status "Worker SES Tooling: Makefile targets present" "FAIL"
+fi
+
+if grep -q 'send_email' /app/backend/internal/domain/services/challenge_service.go && grep -q 'case "send_email"' /app/backend/cmd/worker/main.go; then
+    report_status "Publish Flow: send_email queue contract wired" "PASS"
+else
+    report_status "Publish Flow: send_email queue contract wired" "FAIL"
+fi
+
+W32_TO="ses-day32-$(date +%s)@example.com"
+curl -s -X POST "$LS_URL/000000000000/fitchallenge-jobs" \
+    --data-urlencode "Action=SendMessage" \
+    --data-urlencode "Version=2012-11-05" \
+    --data-urlencode "MessageBody={\"type\":\"send_email\",\"to\":\"$W32_TO\",\"subject\":\"Day32 SES Test\",\"body\":\"<h1>ok</h1>\"}" > /dev/null
+
+sleep 5
+W32_RECV=$(curl -s -X POST "$LS_URL/000000000000/fitchallenge-jobs" \
+    --data-urlencode "Action=ReceiveMessage" \
+    --data-urlencode "Version=2012-11-05" \
+    --data-urlencode "MaxNumberOfMessages=10" \
+    --data-urlencode "WaitTimeSeconds=1" \
+    --data-urlencode "VisibilityTimeout=0")
+
+if [[ $W32_RECV == *"$W32_TO"* ]]; then
+    report_status "Worker SES: send_email job consumed" "FAIL"
+else
+    report_status "Worker SES: send_email job consumed" "PASS"
+fi
+
+# --- Phase 30: Security Hardening (STRESS TEST) ---
+print_section "Phase 30: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0

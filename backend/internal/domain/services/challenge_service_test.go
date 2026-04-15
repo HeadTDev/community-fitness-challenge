@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,9 +219,23 @@ func (m *mockRedisClient) Close() error {
 	return m.Called().Error(0)
 }
 
+type mockQueuePublisher struct {
+	mock.Mock
+}
+
+func (m *mockQueuePublisher) GetQueueURL(ctx context.Context, queueName string) (string, error) {
+	a := m.Called(ctx, queueName)
+	return a.String(0), a.Error(1)
+}
+
+func (m *mockQueuePublisher) SendMessage(ctx context.Context, queueURL, body string) (string, error) {
+	a := m.Called(ctx, queueURL, body)
+	return a.String(0), a.Error(1)
+}
+
 // --- Tests ---
 
-func setupService() (*mockDBPool, *mockChallengeRepo, *mockUserRepo, *mockParticipationRepo, *mockPrizeRepo, *mockS3Client, *mockRedisClient, ChallengeService, *slog.Logger) {
+func setupService() (*mockDBPool, *mockChallengeRepo, *mockUserRepo, *mockParticipationRepo, *mockPrizeRepo, *mockS3Client, *mockRedisClient, *mockQueuePublisher, ChallengeService, *slog.Logger) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	pool := new(mockDBPool)
 	cRepo := new(mockChallengeRepo)
@@ -229,14 +244,15 @@ func setupService() (*mockDBPool, *mockChallengeRepo, *mockUserRepo, *mockPartic
 	prRepo := new(mockPrizeRepo)
 	s3 := new(mockS3Client)
 	redisMock := new(mockRedisClient)
+	queue := new(mockQueuePublisher)
 
-	service := NewChallengeService(pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, logger)
-	return pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, service, logger
+	service := NewChallengeService(pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, queue, logger)
+	return pool, cRepo, uRepo, pRepo, prRepo, s3, redisMock, queue, service, logger
 }
 
 func TestJoinChallenge(t *testing.T) {
 	ctx := context.Background()
-	pool, cRepo, _, pRepo, _, _, redisMock, service, _ := setupService()
+	pool, cRepo, _, pRepo, _, _, redisMock, _, service, _ := setupService()
 
 	userID := uuid.New()
 	challengeID := uuid.New()
@@ -302,7 +318,7 @@ func TestJoinChallenge(t *testing.T) {
 
 func TestLeaveChallenge(t *testing.T) {
 	ctx := context.Background()
-	pool, cRepo, _, pRepo, _, _, redisMock, service, _ := setupService()
+	pool, cRepo, _, pRepo, _, _, redisMock, _, service, _ := setupService()
 
 	userID := uuid.New()
 	challengeID := uuid.New()
@@ -338,7 +354,7 @@ func TestLeaveChallenge(t *testing.T) {
 
 func TestCreateChallenge(t *testing.T) {
 	ctx := context.Background()
-	_, cRepo, uRepo, _, _, _, _, service, _ := setupService()
+	_, cRepo, uRepo, _, _, _, _, _, service, _ := setupService()
 
 	creatorID := uuid.New()
 
@@ -360,7 +376,7 @@ func TestCreateChallenge(t *testing.T) {
 
 func TestPublishChallenge(t *testing.T) {
 	ctx := context.Background()
-	_, cRepo, _, _, _, _, _, service, _ := setupService()
+	_, cRepo, uRepo, pRepo, _, _, _, queue, service, _ := setupService()
 
 	creatorID := uuid.New()
 	challengeID := uuid.New()
@@ -371,6 +387,12 @@ func TestPublishChallenge(t *testing.T) {
 		cRepo.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
 			return c.Status == models.ChallengeStatusUpcoming
 		})).Return(nil).Once()
+		pRepo.On("ListByChallenge", ctx, challengeID).Return([]*models.Participation{}, nil).Once()
+		uRepo.On("GetByID", ctx, creatorID).Return(&models.User{ID: creatorID, Email: "creator@example.com"}, nil).Once()
+		queue.On("GetQueueURL", ctx, challengeEventsQueueName).Return("queue-url", nil).Once()
+		queue.On("SendMessage", ctx, "queue-url", mock.MatchedBy(func(body string) bool {
+			return strings.Contains(body, "\"send_email\"") && strings.Contains(body, creatorID.String())
+		})).Return("msg-id", nil).Once()
 
 		err := service.PublishChallenge(ctx, creatorID, challengeID)
 		assert.NoError(t, err)
@@ -388,7 +410,7 @@ func TestPublishChallenge(t *testing.T) {
 
 func TestAddPrize(t *testing.T) {
 	ctx := context.Background()
-	_, cRepo, _, _, prRepo, _, _, service, _ := setupService()
+	_, cRepo, _, _, prRepo, _, _, _, service, _ := setupService()
 
 	creatorID := uuid.New()
 	challengeID := uuid.New()

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,10 +16,17 @@ import (
 )
 
 const jobsQueueName = "fitchallenge-jobs"
+const notificationSender = "noreply@fitchallenge.local"
 
 type workerMessage struct {
-	EventType string `json:"event_type"`
-	UserID    string `json:"user_id"`
+	SchemaVersion string `json:"schema_version"`
+	Type          string `json:"type"`
+	EventType     string `json:"event_type"`
+	UserID        string `json:"user_id"`
+	ChallengeID   string `json:"challenge_id"`
+	To            string `json:"to"`
+	Subject       string `json:"subject"`
+	Body          string `json:"body"`
 }
 
 func main() {
@@ -36,6 +45,7 @@ func main() {
 	}
 
 	sqsClient := aws.NewSQSClient(awsCfg)
+	sesClient := aws.NewSESClient(awsCfg)
 	queueURL, err := sqsClient.GetQueueURL(ctx, jobsQueueName)
 	if err != nil {
 		slog.Error("failed to resolve worker queue URL", "queue", jobsQueueName, "error", err)
@@ -63,12 +73,21 @@ func main() {
 			continue
 		}
 
+		if len(msgs) == 0 {
+			slog.Info("Worker heartbeat — queue empty")
+			continue
+		}
+
 		for _, m := range msgs {
 			if m.Body == nil {
+				slog.Warn("received SQS message with empty body")
 				continue
 			}
 
-			processMessage(*m.Body)
+			if processErr := processMessage(ctx, sesClient, *m.Body); processErr != nil {
+				slog.Error("failed to process SQS message", "error", processErr)
+				continue
+			}
 
 			if m.ReceiptHandle != nil {
 				if delErr := sqsClient.DeleteMessage(ctx, queueURL, *m.ReceiptHandle); delErr != nil {
@@ -79,19 +98,45 @@ func main() {
 	}
 }
 
-func processMessage(rawBody string) {
+func processMessage(ctx context.Context, sesClient *aws.SESClient, rawBody string) error {
 	var msg workerMessage
 	if err := json.Unmarshal([]byte(rawBody), &msg); err != nil {
 		slog.Warn("Unknown job type", "reason", "invalid_json", "body", rawBody)
-		return
+		return nil
 	}
 
-	switch msg.EventType {
+	eventType := strings.TrimSpace(msg.EventType)
+	if eventType == "" {
+		eventType = strings.TrimSpace(msg.Type)
+	}
+
+	switch eventType {
 	case "log_submitted":
 		slog.Info("Validating log for user", "user_id", msg.UserID)
+		return nil
 	case "send_email":
-		slog.Info("Processing send_email job", "user_id", msg.UserID)
+		to := strings.TrimSpace(msg.To)
+		if to == "" {
+			return fmt.Errorf("send_email job missing recipient")
+		}
+		subject := strings.TrimSpace(msg.Subject)
+		if subject == "" {
+			subject = "Community Fitness Challenge update"
+		}
+		body := strings.TrimSpace(msg.Body)
+		if body == "" {
+			body = "<p>You have a new notification from Community Fitness Challenge.</p>"
+		}
+
+		slog.Info("Sending email to user", "to", to, "user_id", msg.UserID, "challenge_id", msg.ChallengeID)
+		msgID, err := sesClient.SendEmail(ctx, notificationSender, to, subject, body)
+		if err != nil {
+			return fmt.Errorf("failed to send email: %w", err)
+		}
+		slog.Info("Email sent", "to", to, "message_id", msgID)
+		return nil
 	default:
-		slog.Warn("Unknown job type", "event_type", msg.EventType)
+		slog.Warn("Unknown job type", "event_type", eventType)
+		return nil
 	}
 }
