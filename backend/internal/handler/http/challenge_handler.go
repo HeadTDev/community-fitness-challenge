@@ -488,3 +488,31 @@ func (h *ChallengeHandler) SubmitDailyLog(c *gin.Context) {
 
 	response.Success(c, http.StatusCreated, log.ToResponse())
 }
+
+func (h *ChallengeHandler) GetDailyLogs(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	logs, err := h.logService.GetDailyLogsWithAggregation(c.Request.Context(), userID, challengeID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge or participation not found")
+		case errors.Is(err, domain.ErrInvalidInput):
+			response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to fetch daily logs")
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, logs)
+}

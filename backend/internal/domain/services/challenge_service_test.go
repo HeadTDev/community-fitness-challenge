@@ -106,6 +106,9 @@ func (m *mockParticipationRepo) Get(ctx context.Context, u, c uuid.UUID) (*model
 	}
 	return a.Get(0).(*models.Participation), a.Error(1)
 }
+func (m *mockParticipationRepo) UpdateCurrentScore(ctx context.Context, u, c uuid.UUID, score int) error {
+	return m.Called(ctx, u, c, score).Error(0)
+}
 func (m *mockParticipationRepo) GetParticipantsCount(ctx context.Context, c uuid.UUID) (int, error) {
 	a := m.Called(ctx, c)
 	return a.Int(0), a.Error(1)

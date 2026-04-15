@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 24 (Daily Lock + SQS Event)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 25 (Log API + Aggregation)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -578,8 +578,84 @@ else
     report_status "SQS Event: log_submitted published" "FAIL"
 fi
 
-# --- Phase 19: Security Hardening (STRESS TEST) ---
-print_section "Phase 19: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 19: Log API + Participation Aggregation ---
+print_section "Phase 19: Log API + Participation Aggregation (Day 25)"
+
+LOG25_START=$(date -u -d "@$(($(date +%s) - 864000))" +"%Y-%m-%dT%H:%M:%SZ")
+LOG25_END=$(date -u -d "@$(($(date +%s) + 864000))" +"%Y-%m-%dT%H:%M:%SZ")
+LOG25_TS=$(date +%s)
+
+LOG25_CHALLENGE_RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Log Aggregation Challenge '"$LOG25_TS"'",
+        "description": "Daily aggregation verification",
+        "start_date": "'"$LOG25_START"'",
+        "end_date": "'"$LOG25_END"'",
+        "type": "mixed",
+        "goal": 1000
+    }' "$API_URL/v1/challenges")
+LOG25_CHALLENGE_ID=$(echo "$LOG25_CHALLENGE_RESP" | jq -r '.data.id')
+
+if [[ "$LOG25_CHALLENGE_ID" != "null" ]] && [[ -n "$LOG25_CHALLENGE_ID" ]]; then
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LOG25_CHALLENGE_ID/publish" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LOG25_CHALLENGE_ID/join" > /dev/null
+
+    D0=$(date -u +"%Y-%m-%dT00:00:00Z")
+    D1=$(date -u -d "@$(($(date +%s) - 86400))" +"%Y-%m-%dT00:00:00Z")
+    D2=$(date -u -d "@$(($(date +%s) - 172800))" +"%Y-%m-%dT00:00:00Z")
+
+    for D in "$D0" "$D1" "$D2"; do
+        curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+                "log_date": "'"$D"'",
+                "steps": 12000,
+                "calories": 650,
+                "active_minutes": 45
+            }' \
+            "$API_URL/v1/challenges/$LOG25_CHALLENGE_ID/logs" > /dev/null
+    done
+
+    LOG25_GET=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LOG25_CHALLENGE_ID/logs")
+    LOG25_DAYS=$(echo "$LOG25_GET" | jq -r '.data.aggregation.days_logged // -1')
+    LOG25_STREAK=$(echo "$LOG25_GET" | jq -r '.data.aggregation.streak // -1')
+    LOG25_SCORE=$(echo "$LOG25_GET" | jq -r '.data.aggregation.total_score // 0')
+    LOG25_CALORIES=$(echo "$LOG25_GET" | jq -r '.data.aggregation.total_calories // -1')
+
+    if [[ "$LOG25_DAYS" == "3" ]]; then
+        report_status "Log API: days_logged aggregation" "PASS"
+    else
+        report_status "Log API: days_logged aggregation" "FAIL" "days_logged: $LOG25_DAYS"
+    fi
+
+    if [[ "$LOG25_STREAK" == "3" ]]; then
+        report_status "Log API: streak aggregation" "PASS"
+    else
+        report_status "Log API: streak aggregation" "FAIL" "streak: $LOG25_STREAK"
+    fi
+
+    if [[ "$LOG25_CALORIES" == "1950" ]]; then
+        report_status "Log API: total_calories aggregation" "PASS"
+    else
+        report_status "Log API: total_calories aggregation" "FAIL" "total_calories: $LOG25_CALORIES"
+    fi
+
+    if [[ "$LOG25_SCORE" == "217.5" ]] || [[ "$LOG25_SCORE" == "217.50" ]]; then
+        report_status "Log API: total_score aggregation" "PASS"
+    else
+        report_status "Log API: total_score aggregation" "FAIL" "total_score: $LOG25_SCORE"
+    fi
+else
+    report_status "Log API: Day 25 setup challenge created" "FAIL" "Resp: $LOG25_CHALLENGE_RESP"
+    report_status "Log API: days_logged aggregation" "FAIL"
+    report_status "Log API: streak aggregation" "FAIL"
+    report_status "Log API: total_calories aggregation" "FAIL"
+    report_status "Log API: total_score aggregation" "FAIL"
+fi
+
+# --- Phase 20: Security Hardening (STRESS TEST) ---
+print_section "Phase 20: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0

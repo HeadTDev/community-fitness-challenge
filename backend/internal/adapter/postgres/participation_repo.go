@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	)
+)
 
 type ParticipationRepo struct {
 	db domain.DB
@@ -63,6 +63,22 @@ func (r *ParticipationRepo) Get(ctx context.Context, userID, challengeID uuid.UU
 		return nil, fmt.Errorf("error getting participation: %w", err)
 	}
 	return p, nil
+}
+
+func (r *ParticipationRepo) UpdateCurrentScore(ctx context.Context, userID, challengeID uuid.UUID, score int) error {
+	query := `
+		UPDATE participations
+		SET current_score = $3, updated_at = NOW()
+		WHERE user_id = $1 AND challenge_id = $2
+	`
+	tag, err := r.db.Exec(ctx, query, userID, challengeID, score)
+	if err != nil {
+		return fmt.Errorf("error updating participation score: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *ParticipationRepo) GetParticipantsCount(ctx context.Context, challengeID uuid.UUID) (int, error) {

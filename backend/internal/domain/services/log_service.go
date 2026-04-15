@@ -37,6 +37,7 @@ type SubmitDailyLogInput struct {
 
 type LogService interface {
 	SubmitDailyLog(ctx context.Context, userID, challengeID uuid.UUID, input SubmitDailyLogInput) (*models.DailyLog, error)
+	GetDailyLogsWithAggregation(ctx context.Context, userID, challengeID uuid.UUID) (*models.DailyLogListResponse, error)
 }
 
 type logService struct {
@@ -155,9 +156,41 @@ func (s *logService) SubmitDailyLog(ctx context.Context, userID, challengeID uui
 		return nil, err
 	}
 
+	if err := s.syncParticipationScore(ctx, userID, challengeID); err != nil {
+		s.logger.Warn("failed to sync participation score after daily log submission", "user_id", userID, "challenge_id", challengeID, "error", err)
+	}
+
 	s.publishLogSubmittedEvent(ctx, log)
 
 	return log, nil
+}
+
+func (s *logService) GetDailyLogsWithAggregation(ctx context.Context, userID, challengeID uuid.UUID) (*models.DailyLogListResponse, error) {
+	if userID == uuid.Nil || challengeID == uuid.Nil {
+		return nil, fmt.Errorf("missing user or challenge id: %w", domain.ErrInvalidInput)
+	}
+
+	if _, err := s.challengeRepo.GetByID(ctx, challengeID); err != nil {
+		return nil, err
+	}
+	if _, err := s.participationRepo.Get(ctx, userID, challengeID); err != nil {
+		return nil, err
+	}
+
+	logs, err := s.dailyLogRepo.ListByUserAndChallenge(ctx, userID, challengeID)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]models.DailyLogResponse, len(logs))
+	for i, log := range logs {
+		responses[i] = log.ToResponse()
+	}
+
+	return &models.DailyLogListResponse{
+		Logs:        responses,
+		Aggregation: calculateDailyLogAggregation(logs),
+	}, nil
 }
 
 func (s *logService) publishLogSubmittedEvent(ctx context.Context, log *models.DailyLog) {
@@ -190,4 +223,50 @@ func (s *logService) publishLogSubmittedEvent(ctx context.Context, log *models.D
 func normalizeUTCDate(t time.Time) time.Time {
 	year, month, day := t.UTC().Date()
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func calculateDailyLogAggregation(logs []*models.DailyLog) models.DailyLogAggregation {
+	totalScore := 0.0
+	totalCalories := 0
+	for _, log := range logs {
+		totalScore += log.Score
+		totalCalories += log.Calories
+	}
+
+	return models.DailyLogAggregation{
+		TotalScore:    round2(totalScore),
+		TotalCalories: totalCalories,
+		DaysLogged:    len(logs),
+		Streak:        calculateStreak(logs),
+	}
+}
+
+func calculateStreak(logs []*models.DailyLog) int {
+	if len(logs) == 0 {
+		return 0
+	}
+
+	expected := normalizeUTCDate(logs[0].LogDate)
+	streak := 0
+
+	for _, log := range logs {
+		logDate := normalizeUTCDate(log.LogDate)
+		if !logDate.Equal(expected) {
+			break
+		}
+		streak++
+		expected = expected.AddDate(0, 0, -1)
+	}
+
+	return streak
+}
+
+func (s *logService) syncParticipationScore(ctx context.Context, userID, challengeID uuid.UUID) error {
+	logs, err := s.dailyLogRepo.ListByUserAndChallenge(ctx, userID, challengeID)
+	if err != nil {
+		return err
+	}
+
+	aggregation := calculateDailyLogAggregation(logs)
+	return s.participationRepo.UpdateCurrentScore(ctx, userID, challengeID, int(round2(aggregation.TotalScore)))
 }

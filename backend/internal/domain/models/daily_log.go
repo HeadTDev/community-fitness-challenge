@@ -30,6 +30,18 @@ type DailyLogResponse struct {
 	Score         float64   `json:"score"`
 }
 
+type DailyLogAggregation struct {
+	TotalScore    float64 `json:"total_score"`
+	TotalCalories int     `json:"total_calories"`
+	DaysLogged    int     `json:"days_logged"`
+	Streak        int     `json:"streak"`
+}
+
+type DailyLogListResponse struct {
+	Logs        []DailyLogResponse  `json:"logs"`
+	Aggregation DailyLogAggregation `json:"aggregation"`
+}
+
 func (d *DailyLog) ToResponse() DailyLogResponse {
 	return DailyLogResponse{
 		ID:            d.ID,
