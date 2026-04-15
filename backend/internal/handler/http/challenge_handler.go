@@ -16,14 +16,16 @@ import (
 )
 
 type ChallengeHandler struct {
-	service    services.ChallengeService
-	logService services.LogService
+	service            services.ChallengeService
+	logService         services.LogService
+	leaderboardService services.LeaderboardService
 }
 
-func NewChallengeHandler(service services.ChallengeService, logService services.LogService) *ChallengeHandler {
+func NewChallengeHandler(service services.ChallengeService, logService services.LogService, leaderboardService services.LeaderboardService) *ChallengeHandler {
 	return &ChallengeHandler{
-		service:    service,
-		logService: logService,
+		service:            service,
+		logService:         logService,
+		leaderboardService: leaderboardService,
 	}
 }
 
@@ -543,4 +545,66 @@ func (h *ChallengeHandler) GetMyProgress(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, progress)
+}
+
+func (h *ChallengeHandler) GetLeaderboard(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	leaderboardType := c.DefaultQuery("type", "absolute")
+	if leaderboardType != "absolute" {
+		response.Error(c, http.StatusBadRequest, "INVALID_TYPE", "Only type=absolute is supported on this endpoint")
+		return
+	}
+
+	leaderboard, err := h.leaderboardService.GetAbsoluteLeaderboard(c.Request.Context(), challengeID, userID, 20)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge or leaderboard entry not found")
+		case errors.Is(err, domain.ErrInvalidInput):
+			response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to fetch leaderboard")
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, leaderboard)
+}
+
+func (h *ChallengeHandler) GetRelativeLeaderboard(c *gin.Context) {
+	userID, ok := h.getUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_ID", "Invalid challenge ID")
+		return
+	}
+
+	leaderboard, err := h.leaderboardService.GetRelativeLeaderboard(c.Request.Context(), challengeID, userID, 2)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Error(c, http.StatusNotFound, "NOT_FOUND", "Challenge or leaderboard entry not found")
+		case errors.Is(err, domain.ErrInvalidInput):
+			response.Error(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to fetch relative leaderboard")
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, leaderboard)
 }

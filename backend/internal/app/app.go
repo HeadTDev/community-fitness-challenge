@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
-	"github.com/HeadTDev/fitchallenge/internal/adapter/redis"
+	adapterRedis "github.com/HeadTDev/fitchallenge/internal/adapter/redis"
 	"github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	"github.com/HeadTDev/fitchallenge/internal/domain"
@@ -36,11 +36,12 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 		return nil, nil, err
 	}
 
-	redisClient, err := redis.NewRedisClient(ctx, cfg)
+	redisClient, err := adapterRedis.NewRedisClient(ctx, cfg)
 	if err != nil {
 		dbPool.Close()
 		return nil, nil, err
 	}
+	redisNative := redisClient
 
 	cleanup := func() {
 		dbPool.Close()
@@ -64,11 +65,13 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	participationRepo := postgres.NewParticipationRepo(dbPool)
 	prizeRepo := postgres.NewPrizeRepo(dbPool)
 	dailyLogRepo := postgres.NewDailyLogRepo(dbPool)
+	leaderboardRepo := adapterRedis.NewLeaderboardRepo(redisNative)
 
 	// 4. Initialize Services
 	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, logger)
 	scoringService := services.NewScoringService()
 	logService := services.NewLogService(challengeRepo, participationRepo, dailyLogRepo, redisClient, scoringService, sqsClient, logger)
+	leaderboardService := services.NewLeaderboardService(leaderboardRepo, participationRepo, challengeRepo)
 
 	// 5. Initialize Router
 	if cfg.App.Env == "production" {
@@ -85,7 +88,7 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	healthHandler := handler.NewHealthHandler(dbPool)
 	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
 	userHandler := handler.NewUserHandler(userRepo, s3Client)
-	challengeHandler := handler.NewChallengeHandler(challengeService, logService)
+	challengeHandler := handler.NewChallengeHandler(challengeService, logService, leaderboardService)
 
 	// Register Routes
 	RegisterRoutes(r, healthHandler, authHandler, userHandler, challengeHandler, jwtManager)
@@ -132,6 +135,8 @@ func RegisterRoutes(
 		v1.POST("/challenges/:id/logs", challenge.SubmitDailyLog)
 		v1.GET("/challenges/:id/logs", challenge.GetDailyLogs)
 		v1.GET("/challenges/:id/my-progress", challenge.GetMyProgress)
+		v1.GET("/challenges/:id/leaderboard", challenge.GetLeaderboard)
+		v1.GET("/challenges/:id/leaderboard/relative", challenge.GetRelativeLeaderboard)
 
 		// Prize routes
 		v1.GET("/challenges/:id/prizes", challenge.GetPrizes)

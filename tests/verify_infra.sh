@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 28 (Redis Leaderboard Alapok)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 29 (Leaderboard APIk)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -824,8 +824,117 @@ else
     report_status "Redis Leaderboard: ZREVRANK consistency" "FAIL"
 fi
 
-# --- Phase 23: Security Hardening (STRESS TEST) ---
-print_section "Phase 23: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 24: Leaderboard Service + API (Absolute + Relative) ---
+print_section "Phase 24: Leaderboard Service + API (Day 29)"
+
+# Reset Redis state to avoid rate-limit carryover from earlier API-heavy phases.
+redis-cli -h ${REDIS_HOST:-redis} FLUSHDB > /dev/null || true
+
+LB29_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LB29_END=$(date -u -d "@$(($(date +%s) + 604800))" +"%Y-%m-%dT%H:%M:%SZ")
+LB29_DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+LB29_TS=$(date +%s)
+
+LB29_CHALLENGE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "Leaderboard API Challenge '"$LB29_TS"'",
+        "description": "Absolute + Relative verification",
+        "start_date": "'"$LB29_START"'",
+        "end_date": "'"$LB29_END"'",
+        "type": "mixed",
+        "goal": 1000
+    }' "$API_URL/v1/challenges")
+LB29_CHALLENGE_ID=$(echo "$LB29_CHALLENGE" | jq -r '.data.id')
+
+if [[ "$LB29_CHALLENGE_ID" != "null" ]] && [[ -n "$LB29_CHALLENGE_ID" ]]; then
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/publish" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/join" > /dev/null
+    CREATOR_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/v1/users/me" | jq -r '.data.id')
+
+    # Creator score (high)
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$LB29_DATE"'",
+            "steps": 12000,
+            "calories": 650,
+            "active_minutes": 45
+        }' "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/logs" > /dev/null
+
+    TOKEN5=$(curl -s -X POST "$API_URL/auth/register-dev" | jq -r '.data.access_token')
+    TOKEN6=$(curl -s -X POST "$API_URL/auth/register-dev" | jq -r '.data.access_token')
+    USER5_ID=$(curl -s -H "Authorization: Bearer $TOKEN5" "$API_URL/v1/users/me" | jq -r '.data.id')
+    USER6_ID=$(curl -s -H "Authorization: Bearer $TOKEN6" "$API_URL/v1/users/me" | jq -r '.data.id')
+
+    curl -s -X POST -H "Authorization: Bearer $TOKEN5" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/join" > /dev/null
+    curl -s -X POST -H "Authorization: Bearer $TOKEN6" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/join" > /dev/null
+
+    # User5 score (mid)
+    curl -s -X POST -H "Authorization: Bearer $TOKEN5" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$LB29_DATE"'",
+            "steps": 8000,
+            "calories": 400,
+            "active_minutes": 30
+        }' "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/logs" > /dev/null
+
+    # User6 score (low)
+    curl -s -X POST -H "Authorization: Bearer $TOKEN6" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "log_date": "'"$LB29_DATE"'",
+            "steps": 3000,
+            "calories": 150,
+            "active_minutes": 10
+        }' "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/logs" > /dev/null
+
+    LB29_ABS=$(curl -s -H "Authorization: Bearer $TOKEN5" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/leaderboard?type=absolute")
+    LB29_TOP_COUNT=$(echo "$LB29_ABS" | jq -r '.data.top | length')
+    LB29_FIRST_SCORE=$(echo "$LB29_ABS" | jq -r '.data.top[0].score')
+    LB29_SECOND_SCORE=$(echo "$LB29_ABS" | jq -r '.data.top[1].score')
+    LB29_MY_ID=$(echo "$LB29_ABS" | jq -r '.data.my_position.user_id // empty')
+
+    if [[ "$LB29_TOP_COUNT" -ge 3 ]] && awk "BEGIN {exit !($LB29_FIRST_SCORE >= $LB29_SECOND_SCORE)}"; then
+        report_status "Leaderboard Absolute: top ordering" "PASS"
+    else
+        report_status "Leaderboard Absolute: top ordering" "FAIL" "count: $LB29_TOP_COUNT first: $LB29_FIRST_SCORE second: $LB29_SECOND_SCORE"
+    fi
+
+    if [[ "$LB29_MY_ID" == "$USER5_ID" ]]; then
+        report_status "Leaderboard Absolute: my_position present" "PASS"
+    else
+        report_status "Leaderboard Absolute: my_position present" "FAIL" "my_position.user_id: $LB29_MY_ID expected: $USER5_ID"
+    fi
+
+    LB29_REL=$(curl -s -H "Authorization: Bearer $TOKEN5" "$API_URL/v1/challenges/$LB29_CHALLENGE_ID/leaderboard/relative")
+    LB29_CREATOR_SCORE=$(echo "$LB29_REL" | jq -r '.data.creator.score // 0')
+    LB29_PERCENT=$(echo "$LB29_REL" | jq -r '.data.relative_to_creator.percentage // 0')
+    LB29_NEARBY_COUNT=$(echo "$LB29_REL" | jq -r '.data.nearby | length')
+    LB29_CREATOR_ID=$(echo "$LB29_REL" | jq -r '.data.creator.user_id // empty')
+
+    if awk "BEGIN {exit !($LB29_CREATOR_SCORE > 0)}" && awk "BEGIN {exit !($LB29_PERCENT > 0)}" && [[ "$LB29_CREATOR_ID" == "$CREATOR_ID" ]]; then
+        report_status "Leaderboard Relative: creator + percentage semantics" "PASS"
+    else
+        report_status "Leaderboard Relative: creator + percentage semantics" "FAIL" "creator_score: $LB29_CREATOR_SCORE percentage: $LB29_PERCENT creator_id: $LB29_CREATOR_ID"
+    fi
+
+    if [[ "$LB29_NEARBY_COUNT" -ge 1 ]]; then
+        report_status "Leaderboard Relative: nearby window" "PASS"
+    else
+        report_status "Leaderboard Relative: nearby window" "FAIL" "nearby: $LB29_NEARBY_COUNT"
+    fi
+else
+    report_status "Leaderboard API: setup challenge created" "FAIL" "Resp: $LB29_CHALLENGE"
+    report_status "Leaderboard Absolute: top ordering" "FAIL"
+    report_status "Leaderboard Absolute: my_position present" "FAIL"
+    report_status "Leaderboard Relative: creator + percentage semantics" "FAIL"
+    report_status "Leaderboard Relative: nearby window" "FAIL"
+fi
+
+# --- Phase 25: Security Hardening (STRESS TEST) ---
+print_section "Phase 25: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0
