@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api logs-worker logs-localstack aws-status aws-s3-ls aws-sqs-send-test aws-ses-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
+.PHONY: dev stop logs-api logs-worker logs-localstack logs-ws logs-nginx nginx-health aws-status aws-s3-ls aws-sqs-send-test aws-ses-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
 
 # Start services in the background
 dev:
@@ -21,6 +21,15 @@ logs-worker:
 # View real-time logs for LocalStack service
 logs-localstack:
 	docker compose logs -f localstack
+
+logs-ws:
+	docker compose logs -f websocket
+
+logs-nginx:
+	docker compose logs -f nginx
+
+nginx-health:
+	curl -fsS http://localhost:80/nginx-health
 
 # Quick status check of LocalStack resources
 aws-status:
@@ -90,6 +99,9 @@ help:
 	@echo "  logs-api        - Follow API container logs"
 	@echo "  logs-worker     - Follow worker container logs"
 	@echo "  logs-localstack - Follow LocalStack logs"
+	@echo "  logs-ws         - Follow websocket container logs"
+	@echo "  logs-nginx      - Follow nginx container logs"
+	@echo "  nginx-health    - Check nginx health endpoint"
 	@echo "  aws-status      - List simulated AWS resources"
 	@echo "  aws-s3-ls       - List S3 buckets in LocalStack"
 	@echo "  aws-sqs-send-test - Send a test log_submitted SQS message"

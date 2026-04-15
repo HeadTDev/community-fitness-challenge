@@ -16,12 +16,14 @@ TOTAL_COUNT=0
 API_URL="http://${API_HOST:-api}:${API_PORT:-8080}"
 LS_URL="http://${LOCALSTACK_HOST:-localstack}:4566"
 DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:-postgres}/${DB_NAME:-fitchallenge}"
+NGINX_URL="http://${NGINX_HOST:-nginx}:${NGINX_PORT:-80}"
+WS_URL="http://${WS_HOST:-websocket}:${WS_PORT:-8081}"
 
 # --- Helper Functions ---
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 33 (Backend E2E)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 34 (Nginx + WS Integration)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -1123,8 +1125,72 @@ else
     report_status "E2E Flow: AWS status includes S3/SQS/Secrets" "FAIL" "Resp: $DAY33_AWS_STATUS"
 fi
 
-# --- Phase 31: Security Hardening (STRESS TEST) ---
-print_section "Phase 31: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 32: Nginx + WebSocket + Full Backend Wiring ---
+print_section "Phase 32: Nginx + WebSocket + Full Backend Wiring (Day 34)"
+
+if [ -f "/app/infra/docker/nginx/Dockerfile" ] && [ -f "/app/infra/docker/nginx/nginx.dev.conf" ] && [ -f "/app/backend/cmd/ws/main.go" ] && [ -f "/app/backend/.air.ws.toml" ] && grep -q "^  nginx:" /app/docker-compose.yml && grep -q "^  websocket:" /app/docker-compose.yml; then
+    report_status "Nginx/WS Setup: files + compose wiring" "PASS"
+else
+    report_status "Nginx/WS Setup: files + compose wiring" "FAIL"
+fi
+
+if grep -q "proxy_set_header Upgrade" /app/infra/docker/nginx/nginx.dev.conf && grep -q "location /ws/" /app/infra/docker/nginx/nginx.dev.conf; then
+    report_status "Nginx WS Proxy: upgrade headers configured" "PASS"
+else
+    report_status "Nginx WS Proxy: upgrade headers configured" "FAIL"
+fi
+
+NGX_HEALTH_CODE=$(curl -s -o /tmp/nginx_health.out -w "%{http_code}" "$NGINX_URL/nginx-health")
+if [[ "$NGX_HEALTH_CODE" == "200" ]]; then
+    report_status "Nginx Health: /nginx-health returns 200" "PASS"
+else
+    report_status "Nginx Health: /nginx-health returns 200" "FAIL" "HTTP: $NGX_HEALTH_CODE"
+fi
+
+NGX_HEALTHZ=$(curl -s "$NGINX_URL/healthz")
+if [[ $NGX_HEALTHZ == *"\"success\":true"* ]]; then
+    report_status "Nginx Proxy: /healthz -> API" "PASS"
+else
+    report_status "Nginx Proxy: /healthz -> API" "FAIL" "Resp: $NGX_HEALTHZ"
+fi
+
+NGX_AUTH=$(curl -s -X POST "$NGINX_URL/auth/register-dev")
+NGX_TOKEN=$(echo "$NGX_AUTH" | jq -r '.data.access_token // empty')
+if [[ -n "$NGX_TOKEN" ]]; then
+    report_status "Nginx Proxy: /auth/register-dev works" "PASS"
+else
+    report_status "Nginx Proxy: /auth/register-dev works" "FAIL" "Resp: $NGX_AUTH"
+fi
+
+NGX_ME_CODE=$(curl -s -o /tmp/nginx_me.out -w "%{http_code}" -H "Authorization: Bearer $NGX_TOKEN" "$NGINX_URL/v1/users/me")
+if [[ "$NGX_ME_CODE" == "200" ]]; then
+    report_status "Nginx Proxy: /v1/* -> API" "PASS"
+else
+    report_status "Nginx Proxy: /v1/* -> API" "FAIL" "HTTP: $NGX_ME_CODE"
+fi
+
+WS_HEALTH=$(curl -s "$WS_URL/healthz")
+if [[ $WS_HEALTH == *"\"service\":\"websocket\""* ]] || [[ $WS_HEALTH == *"\"success\":true"* ]]; then
+    report_status "WebSocket Service: direct /healthz" "PASS"
+else
+    report_status "WebSocket Service: direct /healthz" "FAIL" "Resp: $WS_HEALTH"
+fi
+
+NGX_ASSETS_CODE=$(curl -s -o /tmp/nginx_assets.out -w "%{http_code}" "$NGINX_URL/assets/")
+if [[ "$NGX_ASSETS_CODE" != "000" ]] && [[ "$NGX_ASSETS_CODE" != "502" ]] && [[ "$NGX_ASSETS_CODE" != "503" ]]; then
+    report_status "Nginx Proxy: /assets/* -> LocalStack" "PASS"
+else
+    report_status "Nginx Proxy: /assets/* -> LocalStack" "FAIL" "HTTP: $NGX_ASSETS_CODE"
+fi
+
+if grep -q "^nginx-health:" /app/Makefile; then
+    report_status "Makefile: nginx-health target present" "PASS"
+else
+    report_status "Makefile: nginx-health target present" "FAIL"
+fi
+
+# --- Phase 33: Security Hardening (STRESS TEST) ---
+print_section "Phase 33: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0
