@@ -1,6 +1,6 @@
 # --- Community Fitness Challenge Makefile ---
 
-.PHONY: dev stop logs-api aws-status verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
+.PHONY: dev stop logs-api logs-worker aws-status aws-sqs-send-test verify db-migrate seed db-migrate-down db-shell db-tables restart-api test leaderboard-rebuild clean status help
 
 # Start services in the background
 dev:
@@ -14,6 +14,10 @@ stop:
 logs-api:
 	docker compose logs -f api
 
+# View real-time logs for the worker service
+logs-worker:
+	docker compose logs -f worker
+
 # Quick status check of LocalStack resources
 aws-status:
 	@echo "--- S3 Buckets ---"
@@ -22,6 +26,10 @@ aws-status:
 	@docker compose exec -T localstack awslocal sqs list-queues
 	@echo "\n--- Secrets ---"
 	@docker compose exec -T localstack awslocal secretsmanager list-secrets
+
+# Send a test log_submitted message to the worker queue
+aws-sqs-send-test:
+	docker compose exec -T localstack sh -lc 'Q=$$(awslocal sqs get-queue-url --queue-name fitchallenge-jobs --query QueueUrl --output text) && awslocal sqs send-message --queue-url "$$Q" --message-body "{\"event_type\":\"log_submitted\",\"user_id\":\"make-test-user\"}"'
 
 # Run the full infrastructure and API verification script inside a Docker container
 verify:
@@ -70,7 +78,9 @@ help:
 	@echo "  dev             - Start all services (detached)"
 	@echo "  stop            - Stop and remove containers"
 	@echo "  logs-api        - Follow API container logs"
+	@echo "  logs-worker     - Follow worker container logs"
 	@echo "  aws-status      - List simulated AWS resources"
+	@echo "  aws-sqs-send-test - Send a test log_submitted SQS message"
 	@echo "  verify          - Run Day-to-Day verification script"
 	@echo "  db-migrate      - Apply pending migrations"
 	@echo "  seed            - Populate the database with sample data"

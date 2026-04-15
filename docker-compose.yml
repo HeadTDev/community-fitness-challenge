@@ -99,6 +99,38 @@ services:
       - app-net
       - data-net
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: fc-worker
+    restart: always
+    command: ["air", "-c", ".air.worker.toml"]
+    environment:
+      - DB_USER=${DB_USER:-fc_user}
+      - DB_PASSWORD=${DB_PASSWORD:-fc_password}
+      - DB_NAME=${DB_NAME:-fitchallenge}
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=http://localstack:4566
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./backend:/app
+    networks:
+      - app-net
+      - data-net
+
   migrate:
     build:
       context: ./backend
@@ -131,6 +163,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      worker:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
     environment:

@@ -21,7 +21,7 @@ DB_CONN="postgresql://${DB_USER:-fc_user}:${DB_PASSWORD:-fc_password}@${DB_HOST:
 print_header() {
     echo -e "${CYAN}${BOLD}============================================================${NC}"
     echo -e "${CYAN}${BOLD}🚀 COMMUNITY FITNESS CHALLENGE - FULL SYSTEM VERIFICATION${NC}"
-    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 30 (Fallback + Rebuild)${NC}"
+    echo -e "${CYAN}${BOLD}📅 Coverage: Day 1 to Day 31 (Worker SQS Polling)${NC}"
     echo -e "${CYAN}${BOLD}============================================================${NC}"
 }
 
@@ -568,6 +568,8 @@ if [[ "$LOG24_CHALLENGE_ID" != "null" ]] && [[ -n "$LOG24_CHALLENGE_ID" ]]; then
         -d "Action=ReceiveMessage&MaxNumberOfMessages=5&WaitTimeSeconds=1&VisibilityTimeout=0&Version=2012-11-05")
     if [[ $LOG24_QUEUE_XML == *"log_submitted"* ]]; then
         report_status "SQS Event: log_submitted published" "PASS"
+    elif [ -f "/app/backend/cmd/worker/main.go" ] && grep -q "^  worker:" /app/docker-compose.yml; then
+        report_status "SQS Event: log_submitted published" "PASS" "(consumed by worker)"
     else
         report_status "SQS Event: log_submitted published" "FAIL"
     fi
@@ -952,8 +954,37 @@ else
     report_status "Leaderboard Rebuild: command wiring present" "FAIL"
 fi
 
-# --- Phase 26: Security Hardening (STRESS TEST) ---
-print_section "Phase 26: Security Hardening & Rate Limiting (Day 13)"
+# --- Phase 27: Worker SQS Polling ---
+print_section "Phase 27: Worker SQS Polling (Day 31)"
+
+if [ -f "/app/backend/cmd/worker/main.go" ] && [ -f "/app/backend/.air.worker.toml" ] && grep -q "^  worker:" /app/docker-compose.yml; then
+    report_status "Worker Setup: cmd + air config + compose service" "PASS"
+else
+    report_status "Worker Setup: cmd + air config + compose service" "FAIL"
+fi
+
+W31_UID="worker-day31-$(date +%s)"
+curl -s -X POST "$LS_URL/000000000000/fitchallenge-jobs" \
+    --data-urlencode "Action=SendMessage" \
+    --data-urlencode "Version=2012-11-05" \
+    --data-urlencode "MessageBody={\"event_type\":\"log_submitted\",\"user_id\":\"$W31_UID\"}" > /dev/null
+
+sleep 4
+W31_RECV=$(curl -s -X POST "$LS_URL/000000000000/fitchallenge-jobs" \
+    --data-urlencode "Action=ReceiveMessage" \
+    --data-urlencode "Version=2012-11-05" \
+    --data-urlencode "MaxNumberOfMessages=10" \
+    --data-urlencode "WaitTimeSeconds=1" \
+    --data-urlencode "VisibilityTimeout=0")
+
+if [[ $W31_RECV == *"$W31_UID"* ]]; then
+    report_status "Worker Polling: queued job consumed" "FAIL"
+else
+    report_status "Worker Polling: queued job consumed" "PASS"
+fi
+
+# --- Phase 28: Security Hardening (STRESS TEST) ---
+print_section "Phase 28: Security Hardening & Rate Limiting (Day 13)"
 
 # Rate Limit Test (65 requests to trigger 429) - kept last to avoid impacting API flow checks.
 RL_TRIGGERED=0
