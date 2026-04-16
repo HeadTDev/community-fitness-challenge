@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/HeadTDev/fitchallenge/internal/config"
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
 	"github.com/HeadTDev/fitchallenge/internal/domain/repositories"
@@ -32,7 +33,7 @@ func NewAuthHandler(jwtManager *jwt.JWTManager, repo repositories.UserRepository
 // RegisterDev egy ideiglenes végpont a fejlesztéshez, ami azonnal ad egy tokent.
 func (h *AuthHandler) RegisterDev(c *gin.Context) {
 	// Biztonsági check: Produkcióban tilos!
-	if h.appEnv == "production" {
+	if config.IsProductionEnv(h.appEnv) {
 		response.Error(c, http.StatusForbidden, "FORBIDDEN", "Development endpoint is disabled in production")
 		return
 	}

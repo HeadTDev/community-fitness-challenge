@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"log/slog"
 
 	"github.com/HeadTDev/fitchallenge/internal/app"
 	"github.com/HeadTDev/fitchallenge/internal/config"
@@ -36,8 +36,12 @@ func main() {
 
 	// 5. Configure HTTP Server
 	srv := &http.Server{
-		Addr:    ":" + cfg.App.Port,
-		Handler: router,
+		Addr:              ":" + cfg.App.Port,
+		Handler:           router,
+		ReadHeaderTimeout: cfg.App.ReadHeaderTimeout,
+		ReadTimeout:       cfg.App.ReadTimeout,
+		WriteTimeout:      cfg.App.WriteTimeout,
+		IdleTimeout:       cfg.App.IdleTimeout,
 	}
 
 	// 6. Start server in a goroutine

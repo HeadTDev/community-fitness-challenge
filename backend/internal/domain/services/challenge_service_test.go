@@ -79,6 +79,9 @@ func (m *mockChallengeRepo) GetByIDForUpdate(ctx context.Context, id uuid.UUID) 
 func (m *mockChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 	return m.Called(ctx, c).Error(0)
 }
+func (m *mockChallengeRepo) UpdateParticipantCount(ctx context.Context, id uuid.UUID, count int, updatedAt time.Time) error {
+	return m.Called(ctx, id, count, updatedAt).Error(0)
+}
 func (m *mockChallengeRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
@@ -279,12 +282,10 @@ func TestJoinChallenge(t *testing.T) {
 		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(5, nil).Once()
 		pRepoTx.On("Add", ctx, mock.AnythingOfType("*models.Participation")).Return(nil).Once()
 		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(6, nil).Once()
-		cRepoTx.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
-			return c.ParticipantCount == 6
-		})).Return(nil).Once()
+		cRepoTx.On("UpdateParticipantCount", ctx, challengeID, 6, mock.AnythingOfType("time.Time")).Return(nil).Once()
 
 		tx.On("Commit", ctx).Return(nil).Once()
-		redisMock.On("Incr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
+		redisMock.On("Set", ctx, mock.Anything, 6, time.Duration(0)).Return(redis.NewStatusCmd(ctx)).Once()
 
 		err := service.JoinChallenge(ctx, userID, challengeID)
 		assert.NoError(t, err)
@@ -324,8 +325,6 @@ func TestLeaveChallenge(t *testing.T) {
 	challengeID := uuid.New()
 
 	t.Run("Success", func(t *testing.T) {
-		pRepo.On("Get", ctx, userID, challengeID).Return(&models.Participation{}, nil).Once()
-
 		tx := new(mockTx)
 		pool.On("Begin", ctx).Return(tx, nil).Once()
 		tx.On("Rollback", ctx).Return(nil).Maybe()
@@ -335,17 +334,14 @@ func TestLeaveChallenge(t *testing.T) {
 		cRepo.On("WithTx", tx).Return(cRepoTx).Once()
 		pRepo.On("WithTx", tx).Return(pRepoTx).Once()
 
+		pRepoTx.On("Get", ctx, userID, challengeID).Return(&models.Participation{}, nil).Once()
+		cRepoTx.On("GetByIDForUpdate", ctx, challengeID).Return(&models.Challenge{ID: challengeID, ParticipantCount: 5}, nil).Once()
 		pRepoTx.On("Remove", ctx, userID, challengeID).Return(nil).Once()
 		pRepoTx.On("GetParticipantsCount", ctx, challengeID).Return(4, nil).Once()
-
-		challenge := &models.Challenge{ID: challengeID, ParticipantCount: 5}
-		cRepo.On("GetByID", ctx, challengeID).Return(challenge, nil).Once()
-		cRepoTx.On("Update", ctx, mock.MatchedBy(func(c *models.Challenge) bool {
-			return c.ParticipantCount == 4
-		})).Return(nil).Once()
+		cRepoTx.On("UpdateParticipantCount", ctx, challengeID, 4, mock.AnythingOfType("time.Time")).Return(nil).Once()
 
 		tx.On("Commit", ctx).Return(nil).Once()
-		redisMock.On("Decr", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
+		redisMock.On("Set", ctx, mock.Anything, 4, time.Duration(0)).Return(redis.NewStatusCmd(ctx)).Once()
 		redisMock.On("Del", ctx, mock.Anything).Return(redis.NewIntCmd(ctx)).Once()
 
 		err := service.LeaveChallenge(ctx, userID, challengeID)

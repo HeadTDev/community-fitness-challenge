@@ -4,14 +4,20 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	App struct {
-		Env  string
-		Port string
+		Env               string
+		Port              string
+		ReadHeaderTimeout time.Duration
+		ReadTimeout       time.Duration
+		WriteTimeout      time.Duration
+		IdleTimeout       time.Duration
 	}
 	DB struct {
 		User     string
@@ -44,6 +50,10 @@ func LoadConfig() *Config {
 	// App configuration
 	cfg.App.Env = getEnv("APP_ENV", "development")
 	cfg.App.Port = getEnv("API_PORT", "8080")
+	cfg.App.ReadHeaderTimeout = getEnvDuration("API_READ_HEADER_TIMEOUT", 5*time.Second)
+	cfg.App.ReadTimeout = getEnvDuration("API_READ_TIMEOUT", 10*time.Second)
+	cfg.App.WriteTimeout = getEnvDuration("API_WRITE_TIMEOUT", 30*time.Second)
+	cfg.App.IdleTimeout = getEnvDuration("API_IDLE_TIMEOUT", 60*time.Second)
 
 	// DB configuration
 	cfg.DB.User = getEnv("DB_USER", "fc_user")
@@ -86,4 +96,18 @@ func getEnvInt(key string, fallback int32) int32 {
 		}
 	}
 	return fallback
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if value, ok := os.LookupEnv(key); ok {
+		parsed, err := time.ParseDuration(strings.TrimSpace(value))
+		if err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func IsProductionEnv(env string) bool {
+	return strings.EqualFold(strings.TrimSpace(env), "production")
 }

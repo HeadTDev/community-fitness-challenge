@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
@@ -21,6 +22,7 @@ type leaderboardService struct {
 	fallbackRepo      repositories.LeaderboardRepository
 	participationRepo repositories.ParticipationRepository
 	challengeRepo     repositories.ChallengeRepository
+	logger            *slog.Logger
 }
 
 func NewLeaderboardService(
@@ -28,12 +30,17 @@ func NewLeaderboardService(
 	fallbackRepo repositories.LeaderboardRepository,
 	participationRepo repositories.ParticipationRepository,
 	challengeRepo repositories.ChallengeRepository,
+	logger *slog.Logger,
 ) LeaderboardService {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &leaderboardService{
 		primaryRepo:       primaryRepo,
 		fallbackRepo:      fallbackRepo,
 		participationRepo: participationRepo,
 		challengeRepo:     challengeRepo,
+		logger:            logger,
 	}
 }
 
@@ -142,9 +149,20 @@ func (s *leaderboardService) GetRelativeLeaderboard(ctx context.Context, challen
 func (s *leaderboardService) getTopWithCount(ctx context.Context, challengeID uuid.UUID, limit int64) ([]models.LeaderboardEntry, int64, error) {
 	top, topErr := s.primaryRepo.GetTopN(ctx, challengeID, limit)
 	total, totalErr := s.primaryRepo.GetTotalCount(ctx, challengeID)
-	if topErr == nil && totalErr == nil && len(top) > 0 {
+	if !shouldUseFallbackForTop(top, total, limit, topErr, totalErr) {
+		s.logger.Debug("leaderboard served from redis", "challenge_id", challengeID, "limit", limit, "total", total, "top_size", len(top))
 		return top, total, nil
 	}
+
+	s.logger.Warn(
+		"leaderboard redis fallback activated",
+		"challenge_id", challengeID,
+		"limit", limit,
+		"top_size", len(top),
+		"total_count", total,
+		"top_error", topErr,
+		"total_error", totalErr,
+	)
 
 	fallbackTop, err := s.fallbackRepo.GetTopN(ctx, challengeID, limit)
 	if err != nil {
@@ -157,6 +175,7 @@ func (s *leaderboardService) getTopWithCount(ctx context.Context, challengeID uu
 	if err != nil {
 		return nil, 0, err
 	}
+	s.logger.Info("leaderboard served from postgres fallback", "challenge_id", challengeID, "limit", limit, "total", fallbackTotal, "top_size", len(fallbackTop))
 	return fallbackTop, fallbackTotal, nil
 }
 
@@ -165,8 +184,10 @@ func (s *leaderboardService) getRankWithFallback(ctx context.Context, challengeI
 	if err == nil {
 		return rank, nil
 	}
+	s.logger.Warn("leaderboard rank fallback activated", "challenge_id", challengeID, "user_id", userID, "redis_error", err)
 	fallbackRank, fbErr := s.fallbackRepo.GetRank(ctx, challengeID, userID)
 	if fbErr == nil {
+		s.logger.Info("leaderboard rank served from postgres fallback", "challenge_id", challengeID, "user_id", userID, "rank", fallbackRank)
 		return fallbackRank, nil
 	}
 	return 0, err
@@ -177,12 +198,31 @@ func (s *leaderboardService) getAroundWithFallback(ctx context.Context, challeng
 	if err == nil && len(nearby) > 0 {
 		return nearby, nil
 	}
+	s.logger.Warn("leaderboard nearby fallback activated", "challenge_id", challengeID, "user_id", userID, "radius", radius, "redis_error", err, "redis_count", len(nearby))
 	fallbackNearby, fbErr := s.fallbackRepo.GetAroundUser(ctx, challengeID, userID, radius)
 	if fbErr == nil {
+		s.logger.Info("leaderboard nearby served from postgres fallback", "challenge_id", challengeID, "user_id", userID, "radius", radius, "count", len(fallbackNearby))
 		return fallbackNearby, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	return nil, fbErr
+}
+
+func shouldUseFallbackForTop(top []models.LeaderboardEntry, total, limit int64, topErr, totalErr error) bool {
+	if topErr != nil || totalErr != nil {
+		return true
+	}
+	if total <= 0 {
+		return false
+	}
+	expected := limit
+	if expected <= 0 {
+		expected = total
+	}
+	if total < expected {
+		expected = total
+	}
+	return int64(len(top)) < expected
 }

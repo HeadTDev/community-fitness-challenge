@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/adapter/postgres"
+	adapterRedis "github.com/HeadTDev/fitchallenge/internal/adapter/redis"
 	fca "github.com/HeadTDev/fitchallenge/internal/aws"
 	"github.com/HeadTDev/fitchallenge/internal/config"
 	handler "github.com/HeadTDev/fitchallenge/internal/handler/http"
@@ -41,8 +42,13 @@ func TestFullIntegration(t *testing.T) {
 	require.NoError(t, err)
 	s3Client := fca.NewS3Client(awsCfg, cfg.S3PublicURL)
 
-	// 3. Test API Handlers
-	h := handler.NewHealthHandler(pool)
+	// 3. Test Redis client for readiness checks
+	redisClient, err := adapterRedis.NewRedisClient(ctx, cfg)
+	require.NoError(t, err)
+	defer redisClient.Close()
+
+	// 4. Test API Handlers
+	h := handler.NewHealthHandler(pool, redisClient)
 	r := gin.New()
 	r.Use(middleware.RequestIDMiddleware())
 	r.GET("/readyz", h.Readyz)
@@ -53,11 +59,11 @@ func TestFullIntegration(t *testing.T) {
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		
+
 		var resp map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		assert.NoError(t, err)
-		
+
 		assert.Equal(t, true, resp["success"])
 
 		// Meta check
@@ -73,7 +79,7 @@ func TestFullIntegration(t *testing.T) {
 		bucket := "fitchallenge-assets"
 		key := "integration-test/hello.txt"
 		content := "integration test content"
-		
+
 		// Upload
 		url, err := s3Client.UploadFile(ctx, bucket, key, strings.NewReader(content), "text/plain")
 		assert.NoError(t, err)

@@ -1,19 +1,29 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/HeadTDev/fitchallenge/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	redislib "github.com/redis/go-redis/v9"
 )
 
-type HealthHandler struct {
-	db *pgxpool.Pool
+type redisPinger interface {
+	Ping(ctx context.Context) *redislib.StatusCmd
 }
 
-func NewHealthHandler(db *pgxpool.Pool) *HealthHandler {
-	return &HealthHandler{db: db}
+type HealthHandler struct {
+	db    *pgxpool.Pool
+	redis redisPinger
+}
+
+func NewHealthHandler(db *pgxpool.Pool, redis redisPinger) *HealthHandler {
+	return &HealthHandler{
+		db:    db,
+		redis: redis,
+	}
 }
 
 func (h *HealthHandler) Healthz(c *gin.Context) {
@@ -24,16 +34,23 @@ func (h *HealthHandler) Healthz(c *gin.Context) {
 }
 
 func (h *HealthHandler) Readyz(c *gin.Context) {
-	// Senior tip: Mindig ellenőrizzük az adatbázis kapcsolatot a readyz végponton.
 	if err := h.db.Ping(c.Request.Context()); err != nil {
 		response.Error(c, http.StatusServiceUnavailable, "DB_NOT_READY", "Database connection is not ready")
+		return
+	}
+	if h.redis == nil {
+		response.Error(c, http.StatusServiceUnavailable, "REDIS_NOT_READY", "Redis client is not configured")
+		return
+	}
+	if err := h.redis.Ping(c.Request.Context()).Err(); err != nil {
+		response.Error(c, http.StatusServiceUnavailable, "REDIS_NOT_READY", "Redis connection is not ready")
 		return
 	}
 
 	response.Success(c, http.StatusOK, gin.H{
 		"status": "ready",
 		"db":     "ok",
-		"redis":  "ok", // Redis kliens majd később kerül beépítésre
+		"redis":  "ok",
 	})
 }
 

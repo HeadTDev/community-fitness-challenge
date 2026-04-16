@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/HeadTDev/fitchallenge/internal/domain"
 	"github.com/HeadTDev/fitchallenge/internal/domain/models"
@@ -65,6 +66,19 @@ func (r *ChallengeRepo) Update(ctx context.Context, c *models.Challenge) error {
 	)
 	if err != nil {
 		return fmt.Errorf("error updating challenge: %w", err)
+	}
+	return nil
+}
+
+func (r *ChallengeRepo) UpdateParticipantCount(ctx context.Context, id uuid.UUID, count int, updatedAt time.Time) error {
+	query := `
+		UPDATE challenges
+		SET participant_count = $2, updated_at = $3
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	_, err := r.db.Exec(ctx, query, id, count, updatedAt)
+	if err != nil {
+		return fmt.Errorf("error updating challenge participant_count: %w", err)
 	}
 	return nil
 }

@@ -228,9 +228,7 @@ func (s *challengeService) JoinChallenge(ctx context.Context, userID, challengeI
 		return err
 	}
 
-	challenge.ParticipantCount = count
-	challenge.UpdatedAt = time.Now()
-	if err := challengeRepoTx.Update(ctx, challenge); err != nil {
+	if err := challengeRepoTx.UpdateParticipantCount(ctx, challengeID, count, time.Now()); err != nil {
 		return err
 	}
 
@@ -239,21 +237,12 @@ func (s *challengeService) JoinChallenge(ctx context.Context, userID, challengeI
 		return fmt.Errorf("commit error: %w", err)
 	}
 
-	// Increment Redis counter (after successful DB commit)
-	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, challengeID.String())
-	if err := s.redisClient.Incr(ctx, counterKey).Err(); err != nil {
-		s.logger.Warn("Redis error incrementing counter", "challenge_id", challengeID, "error", err)
-	}
+	s.syncChallengeCountCache(ctx, challengeID, count)
 
 	return nil
 }
 
 func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challengeID uuid.UUID) error {
-	_, err := s.participationRepo.Get(ctx, userID, challengeID)
-	if err != nil {
-		return err // Likely domain.ErrNotFound
-	}
-
 	// Begin Transaction
 	tx, err := s.dbPool.Begin(ctx)
 	if err != nil {
@@ -266,6 +255,13 @@ func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challenge
 	challengeRepoTx := s.challengeRepo.(repositories.ChallengeRepositoryWithTx).WithTx(tx)
 	participationRepoTx := s.participationRepo.(repositories.ParticipationRepositoryWithTx).WithTx(tx)
 
+	if _, err := participationRepoTx.Get(ctx, userID, challengeID); err != nil {
+		return err
+	}
+	if _, err := challengeRepoTx.GetByIDForUpdate(ctx, challengeID); err != nil {
+		return err
+	}
+
 	if err := participationRepoTx.Remove(ctx, userID, challengeID); err != nil {
 		s.logger.Error("failed to remove participation", "user_id", userID, "challenge_id", challengeID, "error", err)
 		return err
@@ -277,14 +273,7 @@ func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challenge
 		return err
 	}
 
-	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
-	if err != nil {
-		return err
-	}
-
-	challenge.ParticipantCount = count
-	challenge.UpdatedAt = time.Now()
-	if err := challengeRepoTx.Update(ctx, challenge); err != nil {
+	if err := challengeRepoTx.UpdateParticipantCount(ctx, challengeID, count, time.Now()); err != nil {
 		return err
 	}
 
@@ -293,11 +282,8 @@ func (s *challengeService) LeaveChallenge(ctx context.Context, userID, challenge
 		return fmt.Errorf("commit error: %w", err)
 	}
 
-	// Decrement Redis counter
-	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, challengeID.String())
-	if err := s.redisClient.Decr(ctx, counterKey).Err(); err != nil {
-		s.logger.Warn("Redis error decrementing counter", "challenge_id", challengeID, "error", err)
-	}
+	s.syncChallengeCountCache(ctx, challengeID, count)
+
 	leaderboardKey := fmt.Sprintf(domain.RedisKeyLeaderboard, challengeID.String())
 	if err := s.redisClient.Del(ctx, leaderboardKey).Err(); err != nil {
 		s.logger.Warn("Redis error clearing leaderboard cache on leave", "challenge_id", challengeID, "error", err)
@@ -313,15 +299,11 @@ func (s *challengeService) syncParticipantCount(ctx context.Context, challengeID
 		return err
 	}
 
-	challenge, err := s.challengeRepo.GetByID(ctx, challengeID)
-	if err != nil {
+	if err := s.challengeRepo.UpdateParticipantCount(ctx, challengeID, count, time.Now()); err != nil {
 		return err
 	}
-
-	challenge.ParticipantCount = count
-	challenge.UpdatedAt = time.Now()
-
-	return s.challengeRepo.Update(ctx, challenge)
+	s.syncChallengeCountCache(ctx, challengeID, count)
+	return nil
 }
 
 func (s *challengeService) GetChallenge(ctx context.Context, id uuid.UUID) (*models.Challenge, error) {
@@ -515,5 +497,12 @@ func (s *challengeService) enqueuePublishNotifications(ctx context.Context, chal
 			s.logger.Warn("failed to enqueue publish notification", "challenge_id", challenge.ID, "user_id", userID, "error", sendErr)
 			continue
 		}
+	}
+}
+
+func (s *challengeService) syncChallengeCountCache(ctx context.Context, challengeID uuid.UUID, count int) {
+	counterKey := fmt.Sprintf(domain.RedisKeyChallengeCount, challengeID.String())
+	if err := s.redisClient.Set(ctx, counterKey, count, 0).Err(); err != nil {
+		s.logger.Warn("Redis error syncing challenge counter", "challenge_id", challengeID, "count", count, "error", err)
 	}
 }

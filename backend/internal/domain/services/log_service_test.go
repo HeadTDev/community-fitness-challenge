@@ -35,7 +35,10 @@ func (f *fakeChallengeRepo) GetByIDForUpdate(context.Context, uuid.UUID) (*model
 	return f.GetByID(context.Background(), uuid.Nil)
 }
 func (f *fakeChallengeRepo) Update(context.Context, *models.Challenge) error { return nil }
-func (f *fakeChallengeRepo) Delete(context.Context, uuid.UUID) error         { return nil }
+func (f *fakeChallengeRepo) UpdateParticipantCount(context.Context, uuid.UUID, int, time.Time) error {
+	return nil
+}
+func (f *fakeChallengeRepo) Delete(context.Context, uuid.UUID) error { return nil }
 func (f *fakeChallengeRepo) List(context.Context, *models.ChallengeStatus) ([]*models.Challenge, error) {
 	return nil, nil
 }

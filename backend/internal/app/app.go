@@ -72,10 +72,10 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	challengeService := services.NewChallengeService(dbPool, challengeRepo, userRepo, participationRepo, prizeRepo, s3Client, redisClient, sqsClient, logger)
 	scoringService := services.NewScoringService()
 	logService := services.NewLogService(challengeRepo, participationRepo, dailyLogRepo, redisClient, scoringService, sqsClient, logger)
-	leaderboardService := services.NewLeaderboardService(leaderboardRepo, leaderboardFallbackRepo, participationRepo, challengeRepo)
+	leaderboardService := services.NewLeaderboardService(leaderboardRepo, leaderboardFallbackRepo, participationRepo, challengeRepo, logger)
 
 	// 5. Initialize Router
-	if cfg.App.Env == "production" {
+	if config.IsProductionEnv(cfg.App.Env) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
@@ -86,19 +86,20 @@ func NewRouter(cfg *config.Config, logger *slog.Logger, ctx context.Context) (*g
 	r.Use(gin.Recovery())
 
 	// Handlers
-	healthHandler := handler.NewHealthHandler(dbPool)
+	healthHandler := handler.NewHealthHandler(dbPool, redisNative)
 	authHandler := handler.NewAuthHandler(jwtManager, userRepo, cfg.App.Env)
 	userHandler := handler.NewUserHandler(userRepo, s3Client)
 	challengeHandler := handler.NewChallengeHandler(challengeService, logService, leaderboardService)
 
 	// Register Routes
-	RegisterRoutes(r, healthHandler, authHandler, userHandler, challengeHandler, jwtManager)
+	RegisterRoutes(r, cfg.App.Env, healthHandler, authHandler, userHandler, challengeHandler, jwtManager)
 
 	return r, cleanup, nil
 }
 
 func RegisterRoutes(
 	r *gin.Engine,
+	appEnv string,
 	health *handler.HealthHandler,
 	auth *handler.AuthHandler,
 	user *handler.UserHandler,
@@ -112,7 +113,9 @@ func RegisterRoutes(
 	// Auth routes
 	authGroup := r.Group("/auth")
 	{
-		authGroup.POST("/register-dev", auth.RegisterDev)
+		if !config.IsProductionEnv(appEnv) {
+			authGroup.POST("/register-dev", auth.RegisterDev)
+		}
 		authGroup.POST("/refresh", auth.RefreshToken)
 	}
 
